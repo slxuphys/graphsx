@@ -397,21 +397,27 @@ const zoomValue = document.querySelector("#zoomValue");
 const zoomStep = 1.2;
 const minZoom = 0.25;
 const maxZoom = 4;
+const storagePrefix = "graphsx-playground:v1:";
 
 let zoom = 1;
 let pan = { x: 0, y: 0 };
 let renderedSize = { width: 720, height: 520 };
 let panStart = null;
 let editor = null;
-let currentMode = "graph";
+let currentMode = loadStoredValue("mode", "graph");
 const modeContent = {
-  graph: graphExamples[0].source,
-  markdown: markdownExamples[0].source
+  graph: loadStoredValue("content:graph", graphExamples[0].source),
+  markdown: loadStoredValue("content:markdown", markdownExamples[0].source)
 };
 const selectedExample = {
-  graph: graphExamples[0].name,
-  markdown: markdownExamples[0].name
+  graph: loadStoredValue("example:graph", graphExamples[0].name),
+  markdown: loadStoredValue("example:markdown", markdownExamples[0].name)
 };
+
+if (!modes[currentMode]) {
+  currentMode = "graph";
+}
+mode.value = currentMode;
 
 populateExamples();
 
@@ -423,6 +429,7 @@ editor = new EditorView({
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
         modeContent[contentKey(currentMode)] = editorText();
+        saveModeContent(contentKey(currentMode));
         render();
       }
     })
@@ -475,7 +482,9 @@ canvas.addEventListener("pointerup", endPan);
 canvas.addEventListener("pointercancel", endPan);
 mode.addEventListener("change", () => {
   modeContent[contentKey(currentMode)] = editorText();
+  saveModeContent(contentKey(currentMode));
   currentMode = mode.value;
+  storeValue("mode", currentMode);
   editor.dispatch({
     effects: language.reconfigure(modes[currentMode].extension)
   });
@@ -491,6 +500,8 @@ example.addEventListener("change", () => {
   if (!item) return;
   selectedExample[contentKey(currentMode)] = item.name;
   modeContent[contentKey(currentMode)] = item.source;
+  storeValue(`example:${contentKey(currentMode)}`, item.name);
+  saveModeContent(contentKey(currentMode));
   setEditorText(item.source);
   render();
   if (currentMode === "graph") {
@@ -649,6 +660,26 @@ function populateExamples() {
 
 function contentKey(modeName) {
   return modeName === "liveMarkdown" ? "markdown" : modeName;
+}
+
+function saveModeContent(key) {
+  storeValue(`content:${key}`, modeContent[key]);
+}
+
+function loadStoredValue(key, fallback) {
+  try {
+    return localStorage.getItem(`${storagePrefix}${key}`) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function storeValue(key, value) {
+  try {
+    localStorage.setItem(`${storagePrefix}${key}`, value);
+  } catch {
+    // Storage can be unavailable in hardened/private contexts; the playground still works in memory.
+  }
 }
 
 function canvasCenter() {
