@@ -11,7 +11,10 @@ export function renderGraph(svg, graph, options = {}) {
   const offsetY = 80 - bounds.minY;
   const context = {
     document: options.document ?? svg.ownerDocument ?? document,
-    katex: options.katex ?? null
+    katex: options.katex ?? null,
+    graph,
+    nodes,
+    routing: routingDefaults(graph.attrs)
   };
 
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -26,7 +29,7 @@ export function renderGraph(svg, graph, options = {}) {
     const from = legs.get(edge.from);
     const to = legs.get(edge.to);
     if (!from || !to) continue;
-    edgeLayer.append(drawEdge(context, edge, from, to, offsetX, offsetY));
+    edgeLayer.append(drawEdge(context, resolveEdgeRouting(edge, context.routing), from, to, offsetX, offsetY));
   }
 
   for (const node of graph.nodes) {
@@ -57,7 +60,7 @@ export function flattenEdges(graph) {
   ];
 }
 
-export function edgePathData(edge, from, to, offsetX = 0, offsetY = 0) {
+export function edgePathData(edge, from, to, offsetX = 0, offsetY = 0, routingContext = null) {
   const route = edge.attrs.route ?? "curve";
   if (route === "straight") {
     return pathData([
@@ -67,6 +70,9 @@ export function edgePathData(edge, from, to, offsetX = 0, offsetY = 0) {
   }
   if (route === "orthogonal") {
     return pathData(orthogonalPoints(edge, from, to, offsetX, offsetY));
+  }
+  if (route === "auto") {
+    return pathData(autoRoutePoints(edge, from, to, offsetX, offsetY, routingContext));
   }
 
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
@@ -169,8 +175,30 @@ function drawEdge(context, edge, from, to, offsetX, offsetY) {
   return styledEl(context, "path", edge.attrs.style, {
     class: "edge",
     markerEnd: "url(#arrow)",
-    d: edgePathData(edge, from, to, offsetX, offsetY)
+    d: edgePathData(edge, from, to, offsetX, offsetY, context)
   });
+}
+
+function routingDefaults(attrs) {
+  const routing = attrs.routing && typeof attrs.routing === "object" ? attrs.routing : {};
+  return {
+    route: attrs.route,
+    grid: attrs.grid,
+    padding: attrs.padding,
+    stub: attrs.stub,
+    ...routing
+  };
+}
+
+function resolveEdgeRouting(edge, defaults) {
+  return {
+    ...edge,
+    attrs: {
+      ...defaults,
+      ...edge.attrs,
+      style: edge.attrs.style
+    }
+  };
 }
 
 function orthogonalPoints(edge, from, to, offsetX, offsetY) {
@@ -211,6 +239,250 @@ function orthogonalPoints(edge, from, to, offsetX, offsetY) {
   ]);
 }
 
+function autoRoutePoints(edge, from, to, offsetX, offsetY, context) {
+  if (!context?.nodes) {
+    return orthogonalPoints(edge, from, to, offsetX, offsetY);
+  }
+
+  const grid = Math.max(4, Number(edge.attrs.grid ?? 20));
+  const padding = Number(edge.attrs.padding ?? 16);
+  const stub = Number(edge.attrs.stub ?? 32);
+  const fromDir = cardinalVector(from.angle ?? 0);
+  const toDir = cardinalVector(to.angle ?? 180);
+  const start = { x: from.x + offsetX, y: from.y + offsetY };
+  const end = { x: to.x + offsetX, y: to.y + offsetY };
+  const startStub = { x: start.x + fromDir.x * stub, y: start.y + fromDir.y * stub };
+  const endStub = { x: end.x + toDir.x * stub, y: end.y + toDir.y * stub };
+  const obstacles = obstacleBoxes(context.nodes, edge, offsetX, offsetY, padding);
+  const routeBounds = routeSearchBounds(context.nodes, obstacles, [start, end, startStub, endStub], offsetX, offsetY, padding, grid);
+  const middle = findGridPath(startStub, endStub, obstacles, routeBounds, grid);
+
+  if (!middle) {
+    return orthogonalPoints(edge, from, to, offsetX, offsetY);
+  }
+
+  const startBridge = orthogonalBridge(startStub, middle[0], fromDir.x !== 0 ? "horizontal" : "vertical");
+  const endBridge = orthogonalBridge(middle[middle.length - 1], endStub, toDir.x !== 0 ? "vertical" : "horizontal");
+  return compactCollinearPoints(compactPoints([
+    start,
+    startStub,
+    ...startBridge,
+    ...middle.slice(1, -1),
+    middle[middle.length - 1],
+    ...endBridge,
+    endStub,
+    end
+  ]));
+}
+
+function orthogonalBridge(from, to, firstDirection) {
+  if (from.x === to.x || from.y === to.y) {
+    return [to];
+  }
+  const corner = firstDirection === "horizontal"
+    ? { x: to.x, y: from.y }
+    : { x: from.x, y: to.y };
+  return [corner, to];
+}
+
+function obstacleBoxes(nodes, edge, offsetX, offsetY, padding) {
+  const sourceNode = nodeAddress(edge.from);
+  const targetNode = nodeAddress(edge.to);
+  return nodes
+    .filter((node) => node.children.length === 0)
+    .filter((node) => !isEndpointNode(node.id, sourceNode) && !isEndpointNode(node.id, targetNode))
+    .map((node) => {
+      const box = nodeBox(node);
+      return {
+        minX: box.minX + offsetX - padding,
+        minY: box.minY + offsetY - padding,
+        maxX: box.maxX + offsetX + padding,
+        maxY: box.maxY + offsetY + padding
+      };
+    });
+}
+
+function routeSearchBounds(nodes, obstacles, points, offsetX, offsetY, padding, grid) {
+  const nodeBounds = getBounds(nodes, [], new Map());
+  const xs = [
+    nodeBounds.minX + offsetX,
+    nodeBounds.maxX + offsetX,
+    ...points.map((point) => point.x),
+    ...obstacles.flatMap((box) => [box.minX, box.maxX])
+  ];
+  const ys = [
+    nodeBounds.minY + offsetY,
+    nodeBounds.maxY + offsetY,
+    ...points.map((point) => point.y),
+    ...obstacles.flatMap((box) => [box.minY, box.maxY])
+  ];
+  const margin = padding + grid * 3;
+  return {
+    minX: Math.floor((Math.min(...xs) - margin) / grid) * grid,
+    minY: Math.floor((Math.min(...ys) - margin) / grid) * grid,
+    maxX: Math.ceil((Math.max(...xs) + margin) / grid) * grid,
+    maxY: Math.ceil((Math.max(...ys) + margin) / grid) * grid
+  };
+}
+
+function findGridPath(start, end, obstacles, bounds, grid) {
+  const tracks = buildTracks(bounds, grid, [start.x, end.x], [start.y, end.y]);
+  const startCell = snapCell(start, tracks);
+  const endCell = snapCell(end, tracks);
+  const startKey = cellKey(startCell);
+  const endKey = cellKey(endCell);
+  const open = new Map([[startKey, { cell: startCell, g: 0, f: manhattan(startCell, endCell), parent: null, direction: null }]]);
+  const closed = new Set();
+
+  while (open.size > 0) {
+    const current = lowestScore(open);
+    const currentKey = cellKey(current.cell);
+    open.delete(currentKey);
+    if (currentKey === endKey) {
+      return cellsToPoints(reconstructCells(current), tracks);
+    }
+    closed.add(currentKey);
+
+    for (const next of neighborCells(current.cell)) {
+      if (!cellInBounds(next, tracks)) continue;
+      const nextKey = cellKey(next);
+      if (closed.has(nextKey)) continue;
+      const point = cellPoint(next, tracks);
+      if (pointInBoxes(point, obstacles)) continue;
+
+      const direction = {
+        x: next.x - current.cell.x,
+        y: next.y - current.cell.y
+      };
+      const turnPenalty = current.direction && (current.direction.x !== direction.x || current.direction.y !== direction.y) ? 0.35 : 0;
+      const g = current.g + cellDistance(current.cell, next, tracks) / grid + turnPenalty;
+      const known = open.get(nextKey);
+      if (known && known.g <= g) continue;
+      open.set(nextKey, {
+        cell: next,
+        g,
+        f: g + manhattan(next, endCell),
+        parent: current,
+        direction
+      });
+    }
+  }
+
+  return null;
+}
+
+function lowestScore(open) {
+  let best = null;
+  for (const item of open.values()) {
+    if (!best || item.f < best.f) {
+      best = item;
+    }
+  }
+  return best;
+}
+
+function reconstructCells(node) {
+  const cells = [];
+  for (let current = node; current; current = current.parent) {
+    cells.push(current.cell);
+  }
+  return cells.reverse();
+}
+
+function cellsToPoints(cells, tracks) {
+  return compactCollinearPoints(cells.map((cell) => cellPoint(cell, tracks)));
+}
+
+function buildTracks(bounds, grid, exactXs, exactYs) {
+  return {
+    xs: buildTrack(bounds.minX, bounds.maxX, grid, exactXs),
+    ys: buildTrack(bounds.minY, bounds.maxY, grid, exactYs)
+  };
+}
+
+function buildTrack(min, max, grid, exactValues) {
+  const values = [];
+  for (let value = min; value <= max; value += grid) {
+    values.push(value);
+  }
+  values.push(...exactValues);
+  return [...new Set(values.map((value) => Number(value.toFixed(6))))].sort((a, b) => a - b);
+}
+
+function snapCell(point, tracks) {
+  return {
+    x: nearestTrackIndex(tracks.xs, point.x),
+    y: nearestTrackIndex(tracks.ys, point.y)
+  };
+}
+
+function nearestTrackIndex(track, value) {
+  let bestIndex = 0;
+  let bestDelta = Infinity;
+  for (let index = 0; index < track.length; index += 1) {
+    const delta = Math.abs(track[index] - value);
+    if (delta < bestDelta) {
+      bestDelta = delta;
+      bestIndex = index;
+    }
+  }
+  return bestIndex;
+}
+
+function cellPoint(cell, tracks) {
+  return {
+    x: tracks.xs[cell.x],
+    y: tracks.ys[cell.y]
+  };
+}
+
+function cellKey(cell) {
+  return `${cell.x},${cell.y}`;
+}
+
+function cellInBounds(cell, tracks) {
+  return (
+    cell.x >= 0 &&
+    cell.y >= 0 &&
+    cell.x < tracks.xs.length &&
+    cell.y < tracks.ys.length
+  );
+}
+
+function cellDistance(a, b, tracks) {
+  return Math.abs(tracks.xs[a.x] - tracks.xs[b.x]) + Math.abs(tracks.ys[a.y] - tracks.ys[b.y]);
+}
+
+function neighborCells(cell) {
+  return [
+    { x: cell.x + 1, y: cell.y },
+    { x: cell.x - 1, y: cell.y },
+    { x: cell.x, y: cell.y + 1 },
+    { x: cell.x, y: cell.y - 1 }
+  ];
+}
+
+function manhattan(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function pointInBoxes(point, boxes) {
+  return boxes.some((box) => (
+    point.x >= box.minX &&
+    point.x <= box.maxX &&
+    point.y >= box.minY &&
+    point.y <= box.maxY
+  ));
+}
+
+function nodeAddress(portAddress) {
+  return String(portAddress).split(".").slice(0, -1).join(".");
+}
+
+function isEndpointNode(nodeId, endpointId) {
+  return nodeId === endpointId || nodeId.startsWith(`${endpointId}.`);
+}
+
 function pathData(points) {
   return points.map((point, index) => {
     return `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`;
@@ -223,6 +495,22 @@ function compactPoints(points) {
     const previous = points[index - 1];
     return point.x !== previous.x || point.y !== previous.y;
   });
+}
+
+function compactCollinearPoints(points) {
+  if (points.length <= 2) return points;
+  const compacted = [points[0]];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = compacted[compacted.length - 1];
+    const point = points[index];
+    const next = points[index + 1];
+    if ((previous.x === point.x && point.x === next.x) || (previous.y === point.y && point.y === next.y)) {
+      continue;
+    }
+    compacted.push(point);
+  }
+  compacted.push(points[points.length - 1]);
+  return compacted;
 }
 
 function angleVector(angle) {

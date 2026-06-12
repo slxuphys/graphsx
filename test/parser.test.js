@@ -153,6 +153,20 @@ test("preserves edge route options", () => {
   assert.equal(graph.edges[0].attrs.stub, 40);
 });
 
+test("preserves graph routing defaults", () => {
+  const graph = parseGraph(`
+    <Graph route="auto" grid={20} padding={16}>
+      <Rect id="A" />
+      <Rect id="B" at={[200, 0]} />
+      <Arrow from="A.right" to="B.left" />
+    </Graph>
+  `);
+
+  assert.equal(graph.attrs.route, "auto");
+  assert.equal(graph.attrs.grid, 20);
+  assert.equal(graph.attrs.padding, 16);
+});
+
 test("summarizes rendered graph model", () => {
   const graph = parseGraph(`
     <Graph>
@@ -177,6 +191,51 @@ test("generates reusable orthogonal edge path data", () => {
   );
 
   assert.equal(path, "M 100 100 L 120 100 L 160 100 L 160 180 L 200 180 L 200 160");
+});
+
+test("generates obstacle avoiding auto edge path data", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[0, 40]} size={[60, 40]} />
+      <Rect id="Block" at={[100, 20]} size={[80, 80]} />
+      <Rect id="B" at={[240, 40]} size={[60, 40]} />
+      <Arrow from="A.right" to="B.left" route="auto" grid={20} padding={0} stub={20} />
+    </Graph>
+  `);
+  const nodes = graph.nodes;
+  const edge = graph.edges[0];
+  const from = nodes[0].legs.right;
+  const to = nodes[2].legs.left;
+  const path = edgePathData(edge, from, to, 0, 0, { nodes });
+
+  assert.match(path, /^M 60 60 L 80 60 /);
+  assert.doesNotMatch(path, /L 100 60 L 200 60/);
+});
+
+test("keeps auto edge path segments orthogonal after grid snapping", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[60, 130]} size={[90, 60]} />
+      <Rect id="Block" at={[210, 85]} size={[100, 150]} />
+      <Rect id="B" at={[400, 130]} size={[90, 60]} />
+      <Arrow from="A.right" to="B.left" route="auto" grid={20} padding={18} stub={32} />
+    </Graph>
+  `);
+  const edge = graph.edges[0];
+  const from = graph.nodes[0].legs.right;
+  const to = graph.nodes[2].legs.left;
+  const path = edgePathData(edge, from, to, 0, 0, { nodes: graph.nodes });
+  const points = path.match(/[ML] -?\d+(?:\.\d+)? -?\d+(?:\.\d+)?/g).map((command) => {
+    const [, x, y] = command.split(" ");
+    return { x: Number(x), y: Number(y) };
+  });
+
+  for (let index = 1; index < points.length; index += 1) {
+    assert.ok(
+      points[index - 1].x === points[index].x || points[index - 1].y === points[index].y,
+      `segment ${index} is diagonal in ${path}`
+    );
+  }
 });
 
 test("explicit side ports override default side ports", () => {

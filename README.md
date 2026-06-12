@@ -57,7 +57,7 @@ Built-in `Rect` and `Circle` shapes automatically expose `left`, `right`, `top`,
 
 If you define a port with one of those names yourself, your explicit port overrides the default.
 
-Arrows use curved routing by default. Use `route="straight"` for a direct segment or `route="orthogonal"` for right-angle routing. Orthogonal routing respects port angles by adding a short first and last segment in the port direction:
+Arrows use curved routing by default. Use `route="straight"` for a direct segment, `route="orthogonal"` for right-angle routing, or `route="auto"` for v1 obstacle-avoiding A* routing. Orthogonal and auto routing respect port angles by adding a short first and last segment in the port direction:
 
 ```jsx
 <Rect id="A" at={[100, 120]} size={[100, 60]} />
@@ -67,7 +67,22 @@ Arrows use curved routing by default. Use `route="straight"` for a direct segmen
 <Arrow from="A.top" to="B.left" route="straight" />
 ```
 
-For orthogonal routes, custom angles are snapped to the nearest cardinal direction. You can change the first and last segment length with `stub={40}`.
+For orthogonal and auto routes, custom angles are snapped to the nearest cardinal direction. You can change the first and last segment length with `stub={40}`.
+
+Set routing defaults on `<Graph>` when most edges should use the same behavior:
+
+```jsx
+<Graph route="auto" grid={20} padding={16}>
+  <Rect id="A" at={[60, 100]} size={[90, 60]} />
+  <Rect id="Block" at={[210, 70]} size={[90, 110]} />
+  <Rect id="B" at={[380, 100]} size={[90, 60]} />
+
+  <Arrow from="A.right" to="B.left" />
+  <Arrow from="A.top" to="B.top" route="curve" />
+</Graph>
+```
+
+`route="auto"` avoids shape boxes only in this first version. It does not try to avoid crossing other edges yet. `grid` controls routing resolution and `padding` controls clearance around shapes.
 
 Use `style={{ ... }}` for SVG styling on shapes, ports, and edges:
 
