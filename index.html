@@ -91,6 +91,38 @@
         font: 13px/1 ui-sans-serif, system-ui, sans-serif;
       }
 
+      .icon-button {
+        display: inline-grid;
+        place-items: center;
+        width: 32px;
+        height: 32px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--ink);
+        background: #fbfcfa;
+        font: 700 15px/1 ui-sans-serif, system-ui, sans-serif;
+        cursor: pointer;
+      }
+
+      .icon-button:hover {
+        border-color: #b7c1bb;
+        background: #ffffff;
+      }
+
+      .zoom-controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+      }
+
+      .zoom-value {
+        min-width: 48px;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+      }
+
       .status {
         min-width: 0;
         color: var(--muted);
@@ -188,7 +220,8 @@
       .canvas-wrap {
         position: relative;
         min-height: 0;
-        overflow: auto;
+        overflow: hidden;
+        cursor: grab;
         background:
           linear-gradient(#eef2ee 1px, transparent 1px),
           linear-gradient(90deg, #eef2ee 1px, transparent 1px),
@@ -196,10 +229,17 @@
         background-size: 24px 24px;
       }
 
+      .canvas-wrap.is-panning {
+        cursor: grabbing;
+        user-select: none;
+      }
+
       svg {
         display: block;
-        min-width: 100%;
-        min-height: 100%;
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform-origin: 0 0;
       }
 
       .node-label {
@@ -348,6 +388,12 @@
       <section class="pane render-pane" aria-label="Rendered graph">
         <div class="toolbar">
           <h1>Rendered Graph</h1>
+          <div class="zoom-controls" aria-label="Zoom controls">
+            <button class="icon-button" id="zoomOut" type="button" aria-label="Zoom out" title="Zoom out">-</button>
+            <span class="zoom-value" id="zoomValue">100%</span>
+            <button class="icon-button" id="zoomIn" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+            <button class="icon-button" id="zoomReset" type="button" aria-label="Reset zoom" title="Reset zoom">1:1</button>
+          </div>
           <div id="summary" class="status">0 nodes</div>
         </div>
         <div class="canvas-wrap">
@@ -463,6 +509,16 @@
       const status = document.querySelector("#status");
       const summary = document.querySelector("#summary");
       const svg = document.querySelector("#graph");
+      const canvas = document.querySelector(".canvas-wrap");
+      const zoomOut = document.querySelector("#zoomOut");
+      const zoomIn = document.querySelector("#zoomIn");
+      const zoomReset = document.querySelector("#zoomReset");
+      const zoomValue = document.querySelector("#zoomValue");
+      const zoomStep = 1.2;
+      let zoom = 1;
+      let pan = { x: 0, y: 0 };
+      let renderedSize = { width: 720, height: 520 };
+      let panStart = null;
 
       for (const item of examples) {
         const option = document.createElement("option");
@@ -473,6 +529,42 @@
 
       source.value = examples[0].source;
       source.addEventListener("input", render);
+      zoomOut.addEventListener("click", () => setZoom(zoom / zoomStep));
+      zoomIn.addEventListener("click", () => setZoom(zoom * zoomStep));
+      zoomReset.addEventListener("click", () => setZoom(1));
+      canvas.addEventListener("wheel", (event) => {
+        if (!event.ctrlKey && !event.metaKey) return;
+        event.preventDefault();
+        const next = event.deltaY > 0 ? zoom / zoomStep : zoom * zoomStep;
+        setZoom(next, {
+          x: event.clientX - canvas.getBoundingClientRect().left,
+          y: event.clientY - canvas.getBoundingClientRect().top
+        });
+      }, { passive: false });
+      canvas.addEventListener("pointerdown", (event) => {
+        if (!event.ctrlKey && !event.metaKey) return;
+        event.preventDefault();
+        panStart = {
+          pointerId: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          panX: pan.x,
+          panY: pan.y
+        };
+        canvas.classList.add("is-panning");
+        canvas.setPointerCapture(event.pointerId);
+      });
+      canvas.addEventListener("pointermove", (event) => {
+        if (!panStart || event.pointerId !== panStart.pointerId) return;
+        event.preventDefault();
+        pan = {
+          x: panStart.panX + event.clientX - panStart.x,
+          y: panStart.panY + event.clientY - panStart.y
+        };
+        applyViewport();
+      });
+      canvas.addEventListener("pointerup", endPan);
+      canvas.addEventListener("pointercancel", endPan);
       example.addEventListener("change", () => {
         const item = examples.find((candidate) => candidate.name === example.value);
         if (!item) return;
@@ -484,7 +576,8 @@
       function render() {
         try {
           const graph = parseGraph(source.value);
-          renderGraph(svg, graph, { katex });
+          renderedSize = renderGraph(svg, graph, { katex });
+          applyViewport();
           status.textContent = "Parsed";
           status.classList.remove("error");
           summary.textContent = graphSummary(graph).text;
@@ -492,6 +585,36 @@
           status.textContent = error.message;
           status.classList.add("error");
         }
+      }
+
+      function setZoom(value, focus = null) {
+        const previous = zoom;
+        zoom = Math.min(4, Math.max(0.25, value));
+
+        if (focus && previous !== zoom) {
+          const factor = zoom / previous;
+          pan = {
+            x: focus.x - (focus.x - pan.x) * factor,
+            y: focus.y - (focus.y - pan.y) * factor
+          };
+        }
+        applyViewport();
+      }
+
+      function applyViewport() {
+        svg.style.width = `${renderedSize.width}px`;
+        svg.style.height = `${renderedSize.height}px`;
+        svg.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
+        zoomValue.textContent = `${Math.round(zoom * 100)}%`;
+      }
+
+      function endPan(event) {
+        if (!panStart || event.pointerId !== panStart.pointerId) return;
+        if (canvas.hasPointerCapture(event.pointerId)) {
+          canvas.releasePointerCapture(event.pointerId);
+        }
+        panStart = null;
+        canvas.classList.remove("is-panning");
       }
     </script>
   </body>
