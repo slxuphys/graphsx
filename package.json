@@ -1,0 +1,25 @@
+{
+  "name": "inline-graph-dsl",
+  "version": "0.1.0",
+  "description": "A small React-like inline graph DSL parser and model builder.",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "playground": "vite --host 127.0.0.1",
+    "test": "node --test"
+  },
+  "keywords": [
+    "graph",
+    "dsl",
+    "parser",
+    "diagram"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "vite": "^7.0.0"
+  },
+  "dependencies": {
+    "katex": "^0.17.0"
+  }
+}

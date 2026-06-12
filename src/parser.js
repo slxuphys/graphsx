@@ -1,0 +1,825 @@
+const BUILTIN_SHAPE_TAGS = new Map([
+  ["Rect", "rect"],
+  ["rect", "rect"],
+  ["Rec", "rect"],
+  ["rec", "rect"],
+  ["Circle", "circle"],
+  ["circle", "circle"],
+  ["Circ", "circle"],
+  ["circ", "circle"]
+]);
+const EDGE_TAGS = new Set(["Edge", "Arrow", "Link"]);
+const PORT_TAGS = new Set(["Port", "Leg"]);
+const STYLE_TAGS = new Set(["Style"]);
+const REPEAT_TAGS = new Set(["Repeat"]);
+const SIDE_ATTRS = ["left", "right", "top", "bottom"];
+const SIDE_ANGLES = {
+  left: 180,
+  right: 0,
+  top: -90,
+  bottom: 90
+};
+
+export class GraphDslError extends Error {
+  constructor(message, position = null) {
+    super(position == null ? message : `${message} at ${position}`);
+    this.name = "GraphDslError";
+    this.position = position;
+  }
+}
+
+export function parseGraphs(source) {
+  const roots = parseMarkup(source).filter((node) => node.type === "element");
+  const graphs = roots.filter((node) => node.name === "Graph");
+
+  if (graphs.length !== roots.length) {
+    throw new GraphDslError("Top-level elements must be <Graph>");
+  }
+
+  return graphs.map(buildGraphModel);
+}
+
+export function parseGraph(source) {
+  const graphs = parseGraphs(source);
+
+  if (graphs.length !== 1) {
+    throw new GraphDslError(`Expected exactly one <Graph>, found ${graphs.length}`);
+  }
+
+  return graphs[0];
+}
+
+export function parseMarkup(source) {
+  const parser = new MarkupParser(source);
+  return parser.parseDocument();
+}
+
+export function buildGraphModel(graphElement) {
+  assertElement(graphElement, "Graph");
+  graphElement = expandRepeats(graphElement);
+
+  const shapeElements = graphElement.children.filter(isElementNamed("Shape"));
+  const shapes = new Map(shapeElements.map((shape) => [requiredAttr(shape, "id"), shape]));
+  const styles = buildStyles(graphElement.children.filter(isStyleElement));
+  assertKnownChildren(graphElement, shapes, { allowStyle: true });
+  for (const shape of shapeElements) {
+    assertKnownChildren(shape, shapes);
+  }
+
+  const nodes = graphElement.children.filter((node) => isNodeElement(node, shapes)).map((node) => {
+    return buildNode(node, shapes, styles, { x: 0, y: 0, namespace: "" });
+  });
+
+  const edges = graphElement.children.filter(isEdgeElement).map((edge) => buildEdge(edge, styles));
+  const graph = {
+    type: "graph",
+    attrs: { ...graphElement.attrs },
+    styles: Object.fromEntries(styles),
+    shapes: Object.fromEntries([...shapes].map(([id, shape]) => [id, describeShape(shape)])),
+    nodes,
+    edges
+  };
+
+  resolveGraphAddresses(graph);
+  return graph;
+}
+
+function buildNode(nodeElement, shapes, styles, context) {
+  const normalized = normalizeNodeElement(nodeElement, shapes, styles);
+  const id = requiredAttr(nodeElement, "id");
+  const x = coordinateAttr(normalized.attrs, "x", 0) + context.x;
+  const y = coordinateAttr(normalized.attrs, "y", 0) + context.y;
+  const base = {
+    id: context.namespace ? `${context.namespace}.${id}` : id,
+    localId: id,
+    shape: normalized.shape,
+    x,
+    y,
+    attrs: normalized.attrs,
+    legs: {},
+    children: [],
+    edges: []
+  };
+
+  if (shapes.has(normalized.shape)) {
+    return buildGroupedNode(base, shapes.get(normalized.shape), shapes, styles);
+  }
+
+  for (const legElement of nodeElement.children.filter(isPortElement)) {
+    const leg = buildLeg(legElement, base, styles);
+    base.legs[leg.id] = leg;
+  }
+  addDefaultPorts(base);
+
+  return base;
+}
+
+function buildGroupedNode(instance, shapeElement, shapes, styles) {
+  const childContext = {
+    x: instance.x,
+    y: instance.y,
+    namespace: instance.id
+  };
+
+  instance.children = shapeElement.children
+    .filter((child) => isNodeElement(child, shapes))
+    .map((child) => buildNode(child, shapes, styles, childContext));
+
+  instance.edges = shapeElement.children
+    .filter(isEdgeElement)
+    .map((edge) => prefixGroupedEdge(buildEdge(edge, styles), instance.id));
+
+  for (const legElement of shapeElement.children.filter(isPortElement)) {
+    const leg = buildLeg(legElement, instance, styles);
+    if (legElement.attrs.target) {
+      leg.target = `${instance.id}.${legElement.attrs.target}`;
+    }
+    instance.legs[leg.id] = leg;
+  }
+
+  return instance;
+}
+
+function buildLeg(legElement, node, styles) {
+  const id = requiredAttr(legElement, "id");
+  const side = resolveSide(legElement.attrs);
+  const [explicitX, explicitY] = resolvePortCoordinates(legElement.attrs);
+  const relative = resolveLegPosition(node, side, explicitX, explicitY);
+
+  return {
+    id,
+    side,
+    angle: resolvePortAngle(legElement.attrs, side),
+    x: node.x + relative.x,
+    y: node.y + relative.y,
+    relative,
+    attrs: resolveStyledAttrs(legElement.attrs, styles)
+  };
+}
+
+function addDefaultPorts(node) {
+  if (node.shape !== "rect" && node.shape !== "circle") return;
+
+  for (const side of SIDE_ATTRS) {
+    if (node.legs[side]) continue;
+    const relative = resolveLegPosition(node, side, null, null);
+    node.legs[side] = {
+      id: side,
+      side,
+      angle: SIDE_ANGLES[side],
+      x: node.x + relative.x,
+      y: node.y + relative.y,
+      relative,
+      auto: true,
+      attrs: { id: side, [side]: true }
+    };
+  }
+}
+
+function resolveLegPosition(node, side, explicitX, explicitY) {
+  if (explicitX != null || explicitY != null) {
+    return { x: explicitX ?? 0, y: explicitY ?? 0 };
+  }
+
+  if (node.shape === "circle") {
+    const r = numberAttr({ attrs: node.attrs }, "r", 0);
+    const circle = {
+      left: { x: -r, y: 0 },
+      right: { x: r, y: 0 },
+      top: { x: 0, y: -r },
+      bottom: { x: 0, y: r }
+    };
+    return circle[side] ?? { x: 0, y: 0 };
+  }
+
+  const w = numberAttr({ attrs: node.attrs }, "w", 0);
+  const h = numberAttr({ attrs: node.attrs }, "h", 0);
+  const rect = {
+    left: { x: 0, y: h / 2 },
+    right: { x: w, y: h / 2 },
+    top: { x: w / 2, y: 0 },
+    bottom: { x: w / 2, y: h }
+  };
+
+  return rect[side] ?? { x: w / 2, y: h / 2 };
+}
+
+function buildEdge(edgeElement, styles) {
+  return {
+    from: requiredAttr(edgeElement, "from"),
+    to: requiredAttr(edgeElement, "to"),
+    attrs: resolveStyledAttrs(edgeElement.attrs, styles)
+  };
+}
+
+function prefixGroupedEdge(edge, namespace) {
+  return {
+    ...edge,
+    from: `${namespace}.${edge.from}`,
+    to: `${namespace}.${edge.to}`
+  };
+}
+
+function resolveGraphAddresses(graph) {
+  const ports = indexPorts(graph.nodes);
+
+  for (const node of flattenNodes(graph.nodes)) {
+    for (const leg of Object.values(node.legs)) {
+      if (!leg.target) continue;
+      const target = ports.get(leg.target);
+      if (!target) {
+        throw new GraphDslError(`Unknown port address "${leg.target}"`);
+      }
+      leg.x = target.x;
+      leg.y = target.y;
+      leg.relative = {
+        x: target.x - node.x,
+        y: target.y - node.y
+      };
+    }
+  }
+
+  for (const edge of allEdges(graph)) {
+    assertPortAddress(edge.from, ports);
+    assertPortAddress(edge.to, ports);
+  }
+}
+
+function indexPorts(nodes) {
+  const ports = new Map();
+  for (const node of flattenNodes(nodes)) {
+    for (const [id, leg] of Object.entries(node.legs)) {
+      ports.set(`${node.id}.${id}`, leg);
+    }
+  }
+  return ports;
+}
+
+function flattenNodes(nodes) {
+  return nodes.flatMap((node) => [node, ...flattenNodes(node.children)]);
+}
+
+function allEdges(graph) {
+  return [
+    ...graph.edges,
+    ...graph.nodes.flatMap((node) => nodeEdges(node))
+  ];
+}
+
+function nodeEdges(node) {
+  return [
+    ...node.edges,
+    ...node.children.flatMap((child) => nodeEdges(child))
+  ];
+}
+
+function assertPortAddress(address, ports) {
+  if (!ports.has(address)) {
+    throw new GraphDslError(`Unknown port address "${address}"`);
+  }
+}
+
+function describeShape(shapeElement) {
+  return {
+    id: requiredAttr(shapeElement, "id"),
+    attrs: { ...shapeElement.attrs },
+    nodes: shapeElement.children
+      .filter((node) => node.type === "element" && !isEdgeElement(node) && !isPortElement(node))
+      .map((node) => node.attrs.id),
+    legs: shapeElement.children.filter(isPortElement).map((leg) => leg.attrs.id)
+  };
+}
+
+function assertElement(node, name) {
+  if (!node || node.type !== "element" || node.name !== name) {
+    throw new GraphDslError(`Expected <${name}>`);
+  }
+}
+
+function isElementNamed(name) {
+  return (node) => node.type === "element" && node.name === name;
+}
+
+function isNodeElement(node, shapes) {
+  return node.type === "element" && (BUILTIN_SHAPE_TAGS.has(node.name) || shapes.has(node.name));
+}
+
+function isEdgeElement(node) {
+  return node.type === "element" && EDGE_TAGS.has(node.name);
+}
+
+function isPortElement(node) {
+  return node.type === "element" && PORT_TAGS.has(node.name);
+}
+
+function isStyleElement(node) {
+  return node.type === "element" && STYLE_TAGS.has(node.name);
+}
+
+function isRepeatElement(node) {
+  return node.type === "element" && REPEAT_TAGS.has(node.name);
+}
+
+function normalizeNodeElement(nodeElement, shapes, styles) {
+  const shape = BUILTIN_SHAPE_TAGS.get(nodeElement.name) ?? nodeElement.name;
+  if (!BUILTIN_SHAPE_TAGS.has(nodeElement.name) && !shapes.has(nodeElement.name)) {
+    throw new GraphDslError(`Unknown shape tag <${nodeElement.name}>`);
+  }
+
+  const defaults = shapes.get(nodeElement.name)?.attrs ?? {};
+  const attrs = resolveStyledAttrs({ ...defaults, ...nodeElement.attrs, shape }, styles);
+  if (Array.isArray(attrs.at)) {
+    attrs.x = attrs.at[0] ?? 0;
+    attrs.y = attrs.at[1] ?? 0;
+  }
+  if (Array.isArray(attrs.size)) {
+    attrs.w = attrs.size[0] ?? attrs.w;
+    attrs.h = attrs.size[1] ?? attrs.h;
+  }
+
+  return { shape, attrs };
+}
+
+function coordinateAttr(attrs, name, fallback) {
+  return numberAttr({ attrs }, name, fallback);
+}
+
+function resolveSide(attrs) {
+  if (attrs.side) return attrs.side;
+  return SIDE_ATTRS.find((side) => attrs[side] === true) ?? null;
+}
+
+function resolvePortAngle(attrs, side) {
+  if (attrs.angle != null) {
+    const angle = Number(attrs.angle);
+    if (!Number.isFinite(angle)) {
+      throw new GraphDslError("\"angle\" must be a number");
+    }
+    return angle;
+  }
+  return SIDE_ANGLES[side] ?? 0;
+}
+
+function resolvePortCoordinates(attrs) {
+  if (Array.isArray(attrs.at)) {
+    return [optionalNumber(attrs.at[0]), optionalNumber(attrs.at[1])];
+  }
+  return [optionalNumber(attrs.x), optionalNumber(attrs.y)];
+}
+
+function assertKnownChildren(element, shapes, options = {}) {
+  for (const child of element.children) {
+    if (child.type !== "element") continue;
+    if (
+      child.name === "Shape" ||
+      (options.allowStyle && isStyleElement(child)) ||
+      isNodeElement(child, shapes) ||
+      isEdgeElement(child) ||
+      isPortElement(child)
+    ) {
+      continue;
+    }
+    throw new GraphDslError(`Unknown tag <${child.name}>`);
+  }
+}
+
+function expandRepeats(element) {
+  return expandElement(element, new Map(), { x: 0, y: 0 });
+}
+
+function expandElement(element, scope, offset) {
+  if (isRepeatElement(element)) {
+    return expandRepeat(element, scope, offset);
+  }
+
+  const attrs = offsetPositionAttrs(substituteAttrs(element.attrs, scope), element.name, offset);
+  const childOffset = isPositionableElementName(element.name) ? { x: 0, y: 0 } : offset;
+  const children = element.children.flatMap((child) => {
+    if (child.type !== "element") return child;
+    const expanded = expandElement(child, scope, childOffset);
+    return Array.isArray(expanded) ? expanded : [expanded];
+  });
+
+  return { ...element, attrs, children };
+}
+
+function expandRepeat(element, scope, offset) {
+  const count = numberAttr(element, "count", numberAttr(element, "n", 0));
+  const variable = element.attrs.as ?? "i";
+  const step = Array.isArray(element.attrs.step) ? element.attrs.step : [0, 0];
+  const dx = optionalNumber(step[0]) ?? 0;
+  const dy = optionalNumber(step[1]) ?? 0;
+  const expanded = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const nextScope = new Map(scope);
+    nextScope.set(variable, index);
+    const nextOffset = {
+      x: offset.x + dx * index,
+      y: offset.y + dy * index
+    };
+
+    for (const child of element.children) {
+      if (child.type !== "element") continue;
+      const item = expandElement(child, nextScope, nextOffset);
+      expanded.push(...(Array.isArray(item) ? item : [item]));
+    }
+  }
+
+  return expanded;
+}
+
+function substituteAttrs(attrs, scope) {
+  return Object.fromEntries(Object.entries(attrs).map(([key, value]) => {
+    return [key, substituteValue(value, scope)];
+  }));
+}
+
+function substituteValue(value, scope) {
+  if (typeof value === "string") {
+    return substituteTemplate(value, scope);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => substituteValue(item, scope));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+      return [key, substituteValue(item, scope)];
+    }));
+  }
+  return value;
+}
+
+function substituteTemplate(source, scope) {
+  return source.replace(/\{([^{}]+)\}/g, (match, expression, offset) => {
+    const values = expression.split(",").map((term) => evaluateTemplateTerm(term.trim(), scope));
+    if (!values.every((value) => value != null)) return match;
+
+    const replacement = values.join(",");
+    return source[offset - 1] === "_" || source[offset - 1] === "^" ? `{${replacement}}` : replacement;
+  });
+}
+
+function evaluateTemplateTerm(term, scope) {
+  const match = term.match(/^([A-Za-z_][A-Za-z0-9_]*)([+-]\d+)?$/);
+  if (!match || !scope.has(match[1])) return null;
+  return scope.get(match[1]) + Number(match[2] ?? 0);
+}
+
+function offsetPositionAttrs(attrs, name, offset) {
+  if (!isPositionableElementName(name) || (offset.x === 0 && offset.y === 0)) {
+    return attrs;
+  }
+
+  if (Array.isArray(attrs.at)) {
+    return {
+      ...attrs,
+      at: [
+        offsetNumber(attrs.at[0], offset.x),
+        offsetNumber(attrs.at[1], offset.y),
+        ...attrs.at.slice(2)
+      ]
+    };
+  }
+
+  return {
+    ...attrs,
+    x: offsetNumber(attrs.x, offset.x),
+    y: offsetNumber(attrs.y, offset.y)
+  };
+}
+
+function isPositionableElementName(name) {
+  return (
+    !STYLE_TAGS.has(name) &&
+    !REPEAT_TAGS.has(name) &&
+    name !== "Graph" &&
+    name !== "Shape" &&
+    !EDGE_TAGS.has(name)
+  );
+}
+
+function offsetNumber(value, offset) {
+  return (value == null ? 0 : Number(value)) + offset;
+}
+
+function buildStyles(styleElements) {
+  return new Map(styleElements.map((element) => {
+    const id = requiredAttr(element, "id");
+    return [id, styleAttrs(element.attrs)];
+  }));
+}
+
+function resolveStyledAttrs(attrs, styles) {
+  const namedStyle = attrs.useStyle == null ? {} : lookupStyle(styles, attrs.useStyle);
+  const style = {
+    ...namedStyle,
+    ...styleAttrs(attrs.style ?? {})
+  };
+  if (Object.keys(style).length === 0) {
+    return { ...attrs };
+  }
+  return {
+    ...attrs,
+    style
+  };
+}
+
+function lookupStyle(styles, id) {
+  if (!styles.has(id)) {
+    throw new GraphDslError(`Unknown style "${id}"`);
+  }
+  return styles.get(id);
+}
+
+function styleAttrs(attrs) {
+  const { id, useStyle, style, ...rest } = attrs;
+  return { ...rest, ...(style && typeof style === "object" ? style : {}) };
+}
+
+function requiredAttr(element, name) {
+  if (element.attrs[name] == null || element.attrs[name] === "") {
+    throw new GraphDslError(`<${element.name}> requires "${name}"`);
+  }
+  return element.attrs[name];
+}
+
+function numberAttr(element, name, fallback) {
+  const value = element.attrs[name];
+  if (value == null) return fallback;
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    throw new GraphDslError(`"${name}" must be a number`);
+  }
+  return number;
+}
+
+function optionalNumber(value) {
+  if (value == null) return null;
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    throw new GraphDslError("Leg coordinates must be numbers");
+  }
+  return number;
+}
+
+class MarkupParser {
+  constructor(source) {
+    this.source = source;
+    this.index = 0;
+  }
+
+  parseDocument() {
+    const nodes = [];
+    while (!this.isDone()) {
+      this.skipWhitespace();
+      if (this.isDone()) break;
+      nodes.push(this.parseElement());
+    }
+    return nodes;
+  }
+
+  parseElement() {
+    this.expect("<");
+    if (this.peek() === "/") {
+      throw new GraphDslError("Unexpected closing tag", this.index);
+    }
+
+    const name = this.readName();
+    const attrs = this.readAttrs();
+
+    if (this.consume("/>")) {
+      return { type: "element", name, attrs, children: [] };
+    }
+
+    this.expect(">");
+    const children = [];
+
+    while (!this.isDone()) {
+      this.skipWhitespace();
+      if (this.consume(`</${name}>`)) {
+        return { type: "element", name, attrs, children };
+      }
+      if (this.peek() === "<") {
+        children.push(this.parseElement());
+      } else {
+        const text = this.readText();
+        if (text.trim()) {
+          children.push({ type: "text", value: text });
+        }
+      }
+    }
+
+    throw new GraphDslError(`Missing closing tag for <${name}>`, this.index);
+  }
+
+  readAttrs() {
+    const attrs = {};
+
+    while (!this.isDone()) {
+      this.skipWhitespace();
+      const char = this.peek();
+      if (char === ">" || (char === "/" && this.source[this.index + 1] === ">")) {
+        return attrs;
+      }
+
+      const name = this.readName();
+      this.skipWhitespace();
+
+      if (!this.consume("=")) {
+        attrs[name] = true;
+        continue;
+      }
+
+      this.skipWhitespace();
+      attrs[name] = this.readAttrValue();
+    }
+
+    return attrs;
+  }
+
+  readAttrValue() {
+    const quote = this.peek();
+    if (quote === '"' || quote === "'") {
+      this.index += 1;
+      const start = this.index;
+      while (!this.isDone() && this.peek() !== quote) this.index += 1;
+      const value = this.source.slice(start, this.index);
+      this.expect(quote);
+      return value;
+    }
+
+    if (quote === "{") {
+      return parseBraceLiteral(this.readBraced());
+    }
+
+    throw new GraphDslError("Attribute values must be quoted or braced", this.index);
+  }
+
+  readBraced() {
+    this.expect("{");
+    const start = this.index;
+    let depth = 1;
+
+    while (!this.isDone()) {
+      const char = this.peek();
+      if (char === "{") depth += 1;
+      if (char === "}") depth -= 1;
+      if (depth === 0) {
+        const value = this.source.slice(start, this.index);
+        this.index += 1;
+        return value;
+      }
+      this.index += 1;
+    }
+
+    throw new GraphDslError("Unclosed braced value", start);
+  }
+
+  readName() {
+    const start = this.index;
+    while (!this.isDone() && /[A-Za-z0-9_.:-]/.test(this.peek())) {
+      this.index += 1;
+    }
+
+    if (start === this.index) {
+      throw new GraphDslError("Expected name", this.index);
+    }
+
+    return this.source.slice(start, this.index);
+  }
+
+  readText() {
+    const start = this.index;
+    while (!this.isDone() && this.peek() !== "<") {
+      this.index += 1;
+    }
+    return this.source.slice(start, this.index);
+  }
+
+  skipWhitespace() {
+    while (!this.isDone() && /\s/.test(this.peek())) {
+      this.index += 1;
+    }
+  }
+
+  consume(value) {
+    if (!this.source.startsWith(value, this.index)) return false;
+    this.index += value.length;
+    return true;
+  }
+
+  expect(value) {
+    if (!this.consume(value)) {
+      throw new GraphDslError(`Expected "${value}"`, this.index);
+    }
+  }
+
+  peek() {
+    return this.source[this.index];
+  }
+
+  isDone() {
+    return this.index >= this.source.length;
+  }
+}
+
+function parseBraceLiteral(source) {
+  const value = source.trim();
+  if (/^\{.*\}$/.test(value)) {
+    return parseObjectLiteral(value);
+  }
+  if (/^\[.*\]$/.test(value)) {
+    return parseArrayLiteral(value);
+  }
+  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+  if (value === "true") return true;
+  if (value === "false") return false;
+  if (value === "null") return null;
+
+  const quoted = value.match(/^(['"])(.*)\1$/);
+  if (quoted) return quoted[2];
+
+  throw new GraphDslError(`Unsupported braced literal "{${source}}"`);
+}
+
+function parseArrayLiteral(source) {
+  const inner = source.slice(1, -1).trim();
+  if (!inner) return [];
+
+  return inner.split(",").map((part) => {
+    const value = part.trim();
+    if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
+
+    const quoted = value.match(/^(['"])(.*)\1$/);
+    if (quoted) return quoted[2];
+
+    throw new GraphDslError(`Unsupported array item "${value}"`);
+  });
+}
+
+function parseObjectLiteral(source) {
+  const inner = source.slice(1, -1).trim();
+  if (!inner) return {};
+
+  return Object.fromEntries(splitTopLevel(inner, ",").map((entry) => {
+    const [rawKey, ...rawValueParts] = splitTopLevel(entry, ":");
+    if (rawValueParts.length === 0) {
+      throw new GraphDslError(`Invalid object entry "${entry}"`);
+    }
+    const key = parseObjectKey(rawKey.trim());
+    const value = parseObjectValue(rawValueParts.join(":").trim());
+    return [key, value];
+  }));
+}
+
+function parseObjectKey(source) {
+  const quoted = source.match(/^(['"])(.*)\1$/);
+  if (quoted) return quoted[2];
+  if (/^[A-Za-z_$][A-Za-z0-9_$-]*$/.test(source)) return source;
+  throw new GraphDslError(`Invalid object key "${source}"`);
+}
+
+function parseObjectValue(source) {
+  if (/^-?\d+(\.\d+)?$/.test(source)) return Number(source);
+  if (source === "true") return true;
+  if (source === "false") return false;
+  if (source === "null") return null;
+  if (/^\[.*\]$/.test(source)) return parseArrayLiteral(source);
+  if (/^\{.*\}$/.test(source)) return parseObjectLiteral(source);
+
+  const quoted = source.match(/^(['"])(.*)\1$/);
+  if (quoted) return quoted[2];
+
+  throw new GraphDslError(`Unsupported object value "${source}"`);
+}
+
+function splitTopLevel(source, delimiter) {
+  const parts = [];
+  let start = 0;
+  let depth = 0;
+  let quote = null;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote) {
+      if (char === quote && source[index - 1] !== "\\") {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === "{" || char === "[") depth += 1;
+    if (char === "}" || char === "]") depth -= 1;
+    if (char === delimiter && depth === 0) {
+      parts.push(source.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+
+  parts.push(source.slice(start).trim());
+  return parts.filter(Boolean);
+}

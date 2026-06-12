@@ -1,0 +1,776 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Graph DSL Playground</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8f5;
+        --panel: #ffffff;
+        --ink: #1e2724;
+        --muted: #68736e;
+        --line: #d8ded8;
+        --accent: #2d6cdf;
+        --accent-2: #16846f;
+        --danger: #b42318;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .app {
+        display: grid;
+        grid-template-columns: 280px minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+        gap: 1px;
+        height: 100dvh;
+        overflow: hidden;
+        background: var(--line);
+      }
+
+      .pane {
+        min-width: 0;
+        min-height: 0;
+        background: var(--panel);
+      }
+
+      .editor-pane {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        overflow: hidden;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        min-height: 56px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .status {
+        min-width: 0;
+        color: var(--muted);
+        font-size: 13px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      textarea {
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        resize: none;
+        border: 0;
+        outline: none;
+        overflow: auto;
+        padding: 18px;
+        color: #13201c;
+        background: #fbfcfa;
+        font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        tab-size: 2;
+      }
+
+      .footer {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 10px 16px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .syntax-pane {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        overflow: hidden;
+      }
+
+      .syntax-guide {
+        overflow: auto;
+        padding: 16px;
+        color: var(--muted);
+        background: #ffffff;
+        font-size: 12px;
+        line-height: 1.45;
+      }
+
+      .syntax-section {
+        display: grid;
+        gap: 10px;
+      }
+
+      .syntax-section + .syntax-section {
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+      }
+
+      .syntax-section h2 {
+        margin: 0;
+        color: var(--ink);
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .syntax-grid {
+        display: grid;
+        gap: 8px;
+      }
+
+      .syntax-guide code {
+        display: inline-block;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        color: #18231f;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 11px;
+        white-space: normal;
+      }
+
+      .render-pane {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .canvas-wrap {
+        position: relative;
+        min-height: 0;
+        overflow: auto;
+        background:
+          linear-gradient(#eef2ee 1px, transparent 1px),
+          linear-gradient(90deg, #eef2ee 1px, transparent 1px),
+          #fbfcfa;
+        background-size: 24px 24px;
+      }
+
+      svg {
+        display: block;
+        min-width: 100%;
+        min-height: 100%;
+      }
+
+      .node-label {
+        font: 700 13px ui-sans-serif, system-ui, sans-serif;
+        fill: #1e2724;
+        pointer-events: none;
+      }
+
+      .leg-label {
+        font: 11px ui-sans-serif, system-ui, sans-serif;
+        fill: #52605a;
+        pointer-events: none;
+      }
+
+      .shape {
+        fill: #ffffff;
+        stroke: #26312d;
+        stroke-width: 2;
+      }
+
+      .group-box {
+        fill: rgba(45, 108, 223, 0.05);
+        stroke: rgba(45, 108, 223, 0.45);
+        stroke-dasharray: 6 5;
+      }
+
+      .edge {
+        fill: none;
+        stroke: var(--accent);
+        stroke-width: 2.5;
+      }
+
+      .leg-dot {
+        fill: var(--accent-2);
+        stroke: #ffffff;
+        stroke-width: 2;
+      }
+
+      @media (max-width: 860px) {
+        .app {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+        }
+
+        .syntax-pane {
+          max-height: 34dvh;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <aside class="pane syntax-pane" aria-label="Syntax reference">
+        <div class="toolbar">
+          <h1>Syntax</h1>
+        </div>
+        <div class="syntax-guide">
+          <section class="syntax-section">
+            <h2>Shapes</h2>
+            <div class="syntax-grid">
+              <div><code>&lt;Rect at={[x, y]} size={[w, h]} /&gt;</code></div>
+              <div><code>&lt;Circle at={[x, y]} r={40} /&gt;</code></div>
+            </div>
+          </section>
+          <section class="syntax-section">
+            <h2>Ports</h2>
+            <div class="syntax-grid">
+              <div><code>A.left</code>, <code>A.right</code>, <code>A.top</code>, <code>A.bottom</code> exist by default</div>
+              <div><code>&lt;Port id="out" right /&gt;</code></div>
+              <div><code>&lt;Port id="tap" at={[60, 20]} /&gt;</code></div>
+              <div><code>&lt;Port id="tap" at={[60, 20]} angle={35} /&gt;</code></div>
+            </div>
+          </section>
+          <section class="syntax-section">
+            <h2>Edges</h2>
+            <div class="syntax-grid">
+              <div><code>&lt;Arrow from="A.out" to="B.in" /&gt;</code></div>
+              <div><code>&lt;Arrow from="A.right" to="B.top" route="orthogonal" /&gt;</code></div>
+            </div>
+          </section>
+          <section class="syntax-section">
+            <h2>Labels</h2>
+            <div class="syntax-grid">
+              <div><code>label="$\\alpha$"</code></div>
+              <div><code>label="text"</code></div>
+            </div>
+          </section>
+          <section class="syntax-section">
+            <h2>Style</h2>
+            <div class="syntax-grid">
+              <div><code>&lt;Style id="blueBox" fill="#eef" strokeWidth={3} /&gt;</code></div>
+              <div><code>useStyle="blueBox"</code></div>
+              <div><code>style={{ fill: "#fff" }}</code></div>
+            </div>
+          </section>
+          <section class="syntax-section">
+            <h2>Custom Shapes</h2>
+            <div class="syntax-grid">
+              <div><code>&lt;Shape id="Pair"&gt;...&lt;/Shape&gt;</code></div>
+              <div><code>&lt;Pair id="P1" /&gt;</code></div>
+            </div>
+            <div>Address paths use IDs: <code>P1.in</code> is a public port, and <code>P1.left.in</code> is a port on a child shape.</div>
+          </section>
+          <section class="syntax-section">
+            <h2>Repeat</h2>
+            <div class="syntax-grid">
+              <div><code>&lt;Repeat count={4} as="i" step={[80, 0]}&gt;...&lt;/Repeat&gt;</code></div>
+              <div><code>id="box{i}"</code></div>
+              <div><code>from="box{i}.out" to="box{i+1}.in"</code></div>
+            </div>
+            <div>Nested repeats can use different names, such as <code>row</code> and <code>col</code>, for grids.</div>
+          </section>
+        </div>
+      </aside>
+
+      <section class="pane editor-pane" aria-label="Graph input">
+        <div class="toolbar">
+          <h1>Graph DSL</h1>
+          <div id="status" class="status">Ready</div>
+        </div>
+        <textarea id="source" spellcheck="false"></textarea>
+        <div class="footer">
+          <span>Live parse</span>
+          <span>Nodes, legs, edges, grouped shapes</span>
+        </div>
+      </section>
+
+      <section class="pane render-pane" aria-label="Rendered graph">
+        <div class="toolbar">
+          <h1>Rendered Graph</h1>
+          <div id="summary" class="status">0 nodes</div>
+        </div>
+        <div class="canvas-wrap">
+          <svg id="graph" role="img" aria-label="Rendered graph canvas"></svg>
+        </div>
+      </section>
+    </main>
+
+    <script type="module">
+      import katex from "katex";
+      import "katex/dist/katex.min.css";
+      import { parseGraph } from "./src/index.js";
+
+      const starter = `<Graph>
+  <Style id="blueBox" fill="#eef6ff" stroke="#1d4ed8" strokeWidth={2} />
+  <Style id="violetEdge" stroke="#7c3aed" strokeWidth={3} />
+
+  <Rect id="A" at={[100, 100]} size={[100, 60]} label="$\\alpha$" useStyle="blueBox">
+    <Port id="out" right label="xy" style={{ fill: "#f97316" }} />
+  </Rect>
+
+  <Circle id="B" at={[300, 100]} r={40} label="B">
+    <Port id="in" left />
+  </Circle>
+
+  <Arrow from="A.out" to="B.in" useStyle="violetEdge" />
+</Graph>`;
+
+      const source = document.querySelector("#source");
+      const status = document.querySelector("#status");
+      const summary = document.querySelector("#summary");
+      const svg = document.querySelector("#graph");
+
+      source.value = starter;
+      source.addEventListener("input", render);
+      render();
+
+      function render() {
+        try {
+          const graph = parseGraph(source.value);
+          drawGraph(graph);
+          status.textContent = "Parsed";
+          status.classList.remove("error");
+          const nodeCount = flattenNodes(graph.nodes).length;
+          const edgeCount = flattenEdges(graph).length;
+          summary.textContent = `${nodeCount} ${plural(nodeCount, "node")}, ${edgeCount} ${plural(edgeCount, "edge")}`;
+        } catch (error) {
+          status.textContent = error.message;
+          status.classList.add("error");
+        }
+      }
+
+      function drawGraph(graph) {
+        const nodes = flattenNodes(graph.nodes);
+        const edges = flattenEdges(graph);
+        const legs = indexLegs(nodes);
+        const bounds = getBounds(nodes, edges, legs);
+        const width = Math.max(720, bounds.maxX - bounds.minX + 160);
+        const height = Math.max(520, bounds.maxY - bounds.minY + 160);
+        const offsetX = 80 - bounds.minX;
+        const offsetY = 80 - bounds.minY;
+
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        svg.replaceChildren();
+        svg.append(defs());
+
+        const edgeLayer = el("g");
+        const nodeLayer = el("g");
+        svg.append(edgeLayer, nodeLayer);
+
+        for (const edge of edges) {
+          const from = legs.get(edge.from);
+          const to = legs.get(edge.to);
+          if (!from || !to) continue;
+          edgeLayer.append(drawEdge(edge, from, to, offsetX, offsetY));
+        }
+
+        for (const node of graph.nodes) {
+          nodeLayer.append(drawNodeTree(node, offsetX, offsetY));
+        }
+      }
+
+      function drawNodeTree(node, offsetX, offsetY) {
+        const group = el("g");
+        if (node.children.length > 0) {
+          group.append(drawGroupBox(node, offsetX, offsetY));
+          for (const child of node.children) {
+            group.append(drawNodeTree(child, offsetX, offsetY));
+          }
+          for (const leg of Object.values(node.legs)) {
+            appendMaybe(group, drawLeg(leg, offsetX, offsetY));
+          }
+          return group;
+        }
+
+        group.append(drawShape(node, offsetX, offsetY));
+        const label = drawNodeLabel(node, offsetX, offsetY);
+        if (label) {
+          group.append(label);
+        }
+        for (const leg of Object.values(node.legs)) {
+          appendMaybe(group, drawLeg(leg, offsetX, offsetY));
+        }
+        return group;
+      }
+
+      function drawShape(node, offsetX, offsetY) {
+        if (node.shape === "circle") {
+          const r = Number(node.attrs.r ?? 28);
+          return styledEl("circle", node.attrs.style, {
+            class: "shape",
+            cx: node.x + offsetX,
+            cy: node.y + offsetY,
+            r
+          });
+        }
+
+        return styledEl("rect", node.attrs.style, {
+          class: "shape",
+          x: node.x + offsetX,
+          y: node.y + offsetY,
+          width: Number(node.attrs.w ?? 100),
+          height: Number(node.attrs.h ?? 60),
+          rx: 6
+        });
+      }
+
+      function drawGroupBox(node, offsetX, offsetY) {
+        const bounds = getBounds(flattenNodes([node]), [], indexLegs(flattenNodes([node])));
+        const padding = 22;
+        const box = el("g");
+        box.append(el("rect", {
+          class: "group-box",
+          x: bounds.minX + offsetX - padding,
+          y: bounds.minY + offsetY - padding,
+          width: Math.max(80, bounds.maxX - bounds.minX + padding * 2),
+          height: Math.max(54, bounds.maxY - bounds.minY + padding * 2),
+          rx: 8
+        }));
+        const label = drawNodeLabel(node, offsetX, offsetY, {
+          x: node.x,
+          y: bounds.minY - 30
+        });
+        if (label) {
+          box.append(label);
+        }
+        return box;
+      }
+
+      function drawNodeLabel(node, offsetX, offsetY, position = null) {
+        if (node.attrs.label == null) {
+          return null;
+        }
+        const box = nodeBox(node);
+        const x = position?.x ?? box.cx;
+        const y = position?.y ?? box.cy;
+        return drawLabel(node.attrs.label, x + offsetX, y + offsetY, "node-label");
+      }
+
+      function drawLeg(leg, offsetX, offsetY) {
+        if (leg.auto && leg.attrs.label == null && leg.attrs.style == null) {
+          return null;
+        }
+        const group = el("g");
+        group.append(styledEl("circle", leg.attrs.style, {
+          class: "leg-dot",
+          cx: leg.x + offsetX,
+          cy: leg.y + offsetY,
+          r: 5
+        }));
+        if (leg.attrs.label != null) {
+          group.append(drawLabel(leg.attrs.label, leg.x + offsetX + 10, leg.y + offsetY - 10, "leg-label", "start"));
+        }
+        return group;
+      }
+
+      function appendMaybe(parent, child) {
+        if (child) {
+          parent.append(child);
+        }
+      }
+
+      function drawEdge(edge, from, to, offsetX, offsetY) {
+        const route = edge.attrs.route ?? "curve";
+        if (route === "straight") {
+          return styledEl("path", edge.attrs.style, {
+            class: "edge",
+            markerEnd: "url(#arrow)",
+            d: pathData([
+              { x: from.x + offsetX, y: from.y + offsetY },
+              { x: to.x + offsetX, y: to.y + offsetY }
+            ])
+          });
+        }
+        if (route === "orthogonal") {
+          return styledEl("path", edge.attrs.style, {
+            class: "edge",
+            markerEnd: "url(#arrow)",
+            d: pathData(orthogonalPoints(edge, from, to, offsetX, offsetY))
+          });
+        }
+
+        const distance = Math.hypot(to.x - from.x, to.y - from.y);
+        const handle = Math.max(48, distance * 0.35);
+        const fromDir = angleVector(from.angle ?? 0);
+        const toDir = angleVector(to.angle ?? 180);
+        return styledEl("path", edge.attrs.style, {
+          class: "edge",
+          markerEnd: "url(#arrow)",
+          d: `M ${from.x + offsetX} ${from.y + offsetY} C ${from.x + offsetX + fromDir.x * handle} ${from.y + offsetY + fromDir.y * handle}, ${to.x + offsetX + toDir.x * handle} ${to.y + offsetY + toDir.y * handle}, ${to.x + offsetX} ${to.y + offsetY}`
+        });
+      }
+
+      function orthogonalPoints(edge, from, to, offsetX, offsetY) {
+        const stub = Number(edge.attrs.stub ?? 32);
+        const fromDir = cardinalVector(from.angle ?? 0);
+        const toDir = cardinalVector(to.angle ?? 180);
+        const start = { x: from.x + offsetX, y: from.y + offsetY };
+        const end = { x: to.x + offsetX, y: to.y + offsetY };
+        const startStub = {
+          x: start.x + fromDir.x * stub,
+          y: start.y + fromDir.y * stub
+        };
+        const endStub = {
+          x: end.x + toDir.x * stub,
+          y: end.y + toDir.y * stub
+        };
+
+        if (fromDir.x !== 0) {
+          const midX = (startStub.x + endStub.x) / 2;
+          return compactPoints([
+            start,
+            startStub,
+            { x: midX, y: startStub.y },
+            { x: midX, y: endStub.y },
+            endStub,
+            end
+          ]);
+        }
+
+        const midY = (startStub.y + endStub.y) / 2;
+        return compactPoints([
+          start,
+          startStub,
+          { x: startStub.x, y: midY },
+          { x: endStub.x, y: midY },
+          endStub,
+          end
+        ]);
+      }
+
+      function pathData(points) {
+        return points.map((point, index) => {
+          return `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`;
+        }).join(" ");
+      }
+
+      function compactPoints(points) {
+        return points.filter((point, index) => {
+          if (index === 0) return true;
+          const previous = points[index - 1];
+          return point.x !== previous.x || point.y !== previous.y;
+        });
+      }
+
+      function angleVector(angle) {
+        const radians = Number(angle) * Math.PI / 180;
+        return {
+          x: Math.cos(radians),
+          y: Math.sin(radians)
+        };
+      }
+
+      function cardinalVector(angle) {
+        const normalized = ((Number(angle) % 360) + 360) % 360;
+        const directions = [
+          { angle: 0, x: 1, y: 0 },
+          { angle: 90, x: 0, y: 1 },
+          { angle: 180, x: -1, y: 0 },
+          { angle: 270, x: 0, y: -1 }
+        ];
+        return directions.reduce((best, direction) => {
+          const delta = Math.abs(((normalized - direction.angle + 540) % 360) - 180);
+          return delta < best.delta ? { ...direction, delta } : best;
+        }, { ...directions[0], delta: Infinity });
+      }
+
+      function defs() {
+        const marker = el("marker", {
+          id: "arrow",
+          markerWidth: 12,
+          markerHeight: 12,
+          refX: 10,
+          refY: 6,
+          orient: "auto",
+          markerUnits: "strokeWidth"
+        });
+        marker.append(el("path", { d: "M 2 2 L 10 6 L 2 10 z", fill: "#2d6cdf" }));
+        const defs = el("defs");
+        defs.append(marker);
+        return defs;
+      }
+
+      function flattenNodes(nodes) {
+        return nodes.flatMap((node) => [node, ...flattenNodes(node.children)]);
+      }
+
+      function flattenEdges(graph) {
+        return [
+          ...graph.edges,
+          ...graph.nodes.flatMap((node) => collectNodeEdges(node))
+        ];
+      }
+
+      function collectNodeEdges(node) {
+        return [
+          ...node.edges,
+          ...node.children.flatMap((child) => collectNodeEdges(child))
+        ];
+      }
+
+      function indexLegs(nodes) {
+        const legs = new Map();
+        for (const node of nodes) {
+          for (const [id, leg] of Object.entries(node.legs)) {
+            legs.set(`${node.id}.${id}`, leg);
+          }
+        }
+        return legs;
+      }
+
+      function getBounds(nodes, edges, legs) {
+        const points = [];
+        for (const node of nodes) {
+          const box = nodeBox(node);
+          points.push({ x: box.minX, y: box.minY }, { x: box.maxX, y: box.maxY });
+        }
+        for (const edge of edges) {
+          const from = legs.get(edge.from);
+          const to = legs.get(edge.to);
+          if (from) points.push(from);
+          if (to) points.push(to);
+        }
+        if (points.length === 0) {
+          return { minX: 0, minY: 0, maxX: 640, maxY: 360 };
+        }
+        return {
+          minX: Math.min(...points.map((point) => point.x)),
+          minY: Math.min(...points.map((point) => point.y)),
+          maxX: Math.max(...points.map((point) => point.x)),
+          maxY: Math.max(...points.map((point) => point.y))
+        };
+      }
+
+      function nodeBox(node) {
+        if (node.children.length > 0) {
+          return getBounds(flattenNodes(node.children), node.edges, indexLegs(flattenNodes(node.children)));
+        }
+        if (node.shape === "circle") {
+          const r = Number(node.attrs.r ?? 28);
+          return {
+            minX: node.x - r,
+            minY: node.y - r,
+            maxX: node.x + r,
+            maxY: node.y + r,
+            cx: node.x,
+            cy: node.y
+          };
+        }
+        const w = Number(node.attrs.w ?? 100);
+        const h = Number(node.attrs.h ?? 60);
+        return {
+          minX: node.x,
+          minY: node.y,
+          maxX: node.x + w,
+          maxY: node.y + h,
+          cx: node.x + w / 2,
+          cy: node.y + h / 2
+        };
+      }
+
+      function el(name, attrs = {}, text = null) {
+        const node = document.createElementNS("http://www.w3.org/2000/svg", name);
+        for (const [key, value] of Object.entries(attrs)) {
+          node.setAttribute(key, value);
+        }
+        if (text != null) {
+          node.textContent = text;
+        }
+        return node;
+      }
+
+      function styledEl(name, style, attrs = {}, text = null) {
+        return el(name, { ...attrs, ...svgStyleAttrs(style) }, text);
+      }
+
+      function svgStyleAttrs(style) {
+        if (!style || typeof style !== "object") {
+          return {};
+        }
+        const declarations = Object.entries(style).map(([key, value]) => {
+          const name = key.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`);
+          return `${name}: ${value}`;
+        });
+        return { style: declarations.join("; ") };
+      }
+
+      function drawLabel(value, x, y, className, anchor = "middle") {
+        const label = String(value);
+        const math = parseMathLabel(label);
+        if (math) {
+          return drawMathLabel(math, x, y, className, anchor);
+        }
+
+        return el("text", {
+          class: className,
+          x,
+          y: y + 4,
+          "text-anchor": anchor
+        }, label);
+      }
+
+      function drawMathLabel(source, x, y, className, anchor) {
+        const width = estimateMathWidth(source);
+        const height = 34;
+        const left = anchor === "middle" ? x - width / 2 : x;
+        const foreignObject = el("foreignObject", {
+          class: className,
+          x: left,
+          y: y - height / 2,
+          width,
+          height
+        });
+        const host = document.createElement("div");
+        host.style.width = `${width}px`;
+        host.style.height = `${height}px`;
+        host.style.display = "flex";
+        host.style.alignItems = "center";
+        host.style.justifyContent = anchor === "middle" ? "center" : "flex-start";
+        host.style.color = "#1e2724";
+        katex.render(source, host, { throwOnError: false });
+        foreignObject.append(host);
+        return foreignObject;
+      }
+
+      function parseMathLabel(label) {
+        const trimmed = label.trim();
+        if (trimmed.length >= 2 && trimmed.startsWith("$") && trimmed.endsWith("$")) {
+          return trimmed.slice(1, -1);
+        }
+        return null;
+      }
+
+      function estimateMathWidth(source) {
+        return Math.max(34, Math.min(220, source.length * 12 + 28));
+      }
+
+      function plural(count, label) {
+        return count === 1 ? label : `${label}s`;
+      }
+    </script>
+  </body>
+</html>
