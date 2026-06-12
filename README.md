@@ -191,6 +191,18 @@ Grouped shapes are declared with `<Shape>` and can be instantiated by name:
 
 Address paths use IDs. `P1.left` is the child shape named `left` inside the custom shape instance `P1`; `P1.left.in` is the `in` port on that child. Public ports on the custom shape use the shorter form, such as `P1.in`.
 
+Grouped shapes render a dashed group box by default. Set `groupBox={false}` on the shape definition or on an instance to hide it:
+
+```jsx
+<Shape id="Tensor" groupBox={false}>
+  <Rect id="box" at={[0, 0]} size={[56, 56]} />
+  <Port id="left" target="box.left" />
+</Shape>
+
+<Tensor id="A0" at={[100, 100]} />
+<Tensor id="A1" at={[200, 100]} groupBox={true} />
+```
+
 Custom shape instances can pass arbitrary props into the shape body. Use a backtick template string when an internal label or attribute should substitute those props:
 
 ```jsx

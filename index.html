@@ -65,11 +65,30 @@
         border-bottom: 1px solid var(--line);
       }
 
+      .toolbar-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
       h1 {
         margin: 0;
         font-size: 15px;
         font-weight: 700;
         letter-spacing: 0;
+      }
+
+      select {
+        max-width: 180px;
+        min-width: 132px;
+        height: 32px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 0 30px 0 10px;
+        color: var(--ink);
+        background: #fbfcfa;
+        font: 13px/1 ui-sans-serif, system-ui, sans-serif;
       }
 
       .status {
@@ -295,6 +314,7 @@
               <div><code>&lt;Pair id="P1" /&gt;</code></div>
               <div><code>&lt;Tensor site={i} /&gt;</code></div>
               <div><code>label={`$A^{[${site}]}$`}</code></div>
+              <div><code>groupBox={false}</code></div>
             </div>
             <div>Address paths use IDs: <code>P1.in</code> is a public port, and <code>P1.left.in</code> is a port on a child shape.</div>
           </section>
@@ -312,7 +332,10 @@
 
       <section class="pane editor-pane" aria-label="Graph input">
         <div class="toolbar">
-          <h1>Graph DSL</h1>
+          <div class="toolbar-title">
+            <h1>Graph DSL</h1>
+            <select id="example" aria-label="Load example"></select>
+          </div>
           <div id="status" class="status">Ready</div>
         </div>
         <textarea id="source" spellcheck="false"></textarea>
@@ -338,7 +361,10 @@
       import "katex/dist/katex.min.css";
       import { graphSummary, parseGraph, renderGraph } from "./src/index.js";
 
-      const starter = `<Graph>
+      const examples = [
+        {
+          name: "Basic",
+          source: `<Graph>
   <Style id="blueBox" fill="#eef6ff" stroke="#1d4ed8" strokeWidth={2} />
   <Style id="violetEdge" stroke="#7c3aed" strokeWidth={3} />
 
@@ -351,15 +377,108 @@
   </Circle>
 
   <Arrow from="A.out" to="B.in" useStyle="violetEdge" />
-</Graph>`;
+</Graph>`
+        },
+        {
+          name: "MPS",
+          source: `<Graph route="straight">
+  <Style id="tensor" fill="#6aa4d8" stroke="#111111" strokeWidth={3} />
+  <Style id="wire" stroke="#111111" strokeWidth={2.5} />
+  <Style id="hidden" fill="transparent" stroke="transparent" strokeWidth={0} />
+
+  <Shape id="Tensor" groupBox={false}>
+    <Rect id="box" at={[0, 0]} size={[56, 56]} corner={8} useStyle="tensor" label={\`$A^{[\${site}]}$\`}>
+      <Port id="left" left r={0} useStyle="hidden" />
+      <Port id="right" right r={0} useStyle="hidden" />
+      <Port id="phys" bottom r={0} useStyle="hidden" />
+    </Rect>
+
+    <Port id="left" target="box.left" />
+    <Port id="right" target="box.right" />
+    <Port id="phys" target="box.phys" />
+  </Shape>
+
+  <Repeat count={6} as="i" step={[110, 0]}>
+    <Tensor id="A{i}" at={[100, 100]} site={i} />
+    <Point id="p{i}" at={[128, 210]} />
+    <Edge from="A{i}.phys" to="p{i}.center" useStyle="wire" />
+  </Repeat>
+
+  <Repeat count={5} as="i">
+    <Edge from="A{i}.right" to="A{i+1}.left" useStyle="wire" />
+  </Repeat>
+</Graph>`
+        },
+        {
+          name: "Auto Routing",
+          source: `<Graph route="auto" grid={20} padding={18} corner={8}>
+  <Style id="block" fill="#f1f3f5" stroke="#9aa3af" strokeWidth={2} />
+  <Style id="edge" stroke="#2d6cdf" strokeWidth={3} />
+
+  <Rect id="A" at={[60, 150]} size={[100, 60]} label="A" />
+  <Rect id="Block" at={[230, 95]} size={[110, 170]} label="block" useStyle="block" />
+  <Rect id="B" at={[470, 150]} size={[100, 60]} label="B" />
+
+  <Edge from="A.right" to="B.left" useStyle="edge" />
+</Graph>`
+        },
+        {
+          name: "Layout",
+          source: `<Graph layout="dag" direction="right" rankGap={210} nodeGap={95} route="orthogonal" corner={8}>
+  <Rect id="A" size={[100, 60]} label="A" />
+  <Rect id="B" size={[100, 60]} label="B" />
+  <Rect id="C" size={[100, 60]} label="C" />
+  <Rect id="D" size={[100, 60]} label="D" />
+
+  <Arrow from="A.right" to="B.left" />
+  <Arrow from="A.right" to="C.left" />
+  <Arrow from="B.right" to="D.left" />
+  <Arrow from="C.right" to="D.left" />
+</Graph>`
+        },
+        {
+          name: "Grouped Shape",
+          source: `<Graph route="orthogonal" corner={6}>
+  <Style id="leftBox" fill="#fff7ed" stroke="#c2410c" strokeWidth={2} />
+  <Style id="rightBox" fill="#ecfdf5" stroke="#047857" strokeWidth={2} />
+
+  <Shape id="Pair" groupBox={true}>
+    <Rect id="left" at={[0, 0]} size={[80, 50]} label={\`$L_{\${k}}$\`} useStyle="leftBox" />
+    <Circle id="right" at={[170, 25]} r={28} label={\`$R_{\${k}}$\`} useStyle="rightBox" />
+    <Arrow from="left.right" to="right.left" />
+    <Port id="in" target="left.left" />
+    <Port id="out" target="right.right" />
+  </Shape>
+
+  <Pair id="P0" at={[90, 120]} k={0} label="visible group box" />
+  <Pair id="P1" at={[430, 120]} k={1} groupBox={false} />
+
+  <Arrow from="P0.out" to="P1.in" />
+</Graph>`
+        }
+      ];
 
       const source = document.querySelector("#source");
+      const example = document.querySelector("#example");
       const status = document.querySelector("#status");
       const summary = document.querySelector("#summary");
       const svg = document.querySelector("#graph");
 
-      source.value = starter;
+      for (const item of examples) {
+        const option = document.createElement("option");
+        option.value = item.name;
+        option.textContent = item.name;
+        example.append(option);
+      }
+
+      source.value = examples[0].source;
       source.addEventListener("input", render);
+      example.addEventListener("change", () => {
+        const item = examples.find((candidate) => candidate.name === example.value);
+        if (!item) return;
+        source.value = item.source;
+        render();
+      });
       render();
 
       function render() {

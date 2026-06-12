@@ -85,7 +85,11 @@ export function edgePathData(edge, from, to, offsetX = 0, offsetY = 0, routingCo
 function drawNodeTree(context, node, offsetX, offsetY) {
   const group = el(context, "g");
   if (node.children.length > 0) {
-    group.append(drawGroupBox(context, node, offsetX, offsetY));
+    if (showsGroupBox(node)) {
+      group.append(drawGroupBox(context, node, offsetX, offsetY));
+    } else {
+      appendMaybe(group, drawNodeLabel(context, node, offsetX, offsetY));
+    }
     for (const child of node.children) {
       group.append(drawNodeTree(context, child, offsetX, offsetY));
     }
@@ -101,6 +105,10 @@ function drawNodeTree(context, node, offsetX, offsetY) {
     appendMaybe(group, drawLeg(context, leg, offsetX, offsetY));
   }
   return group;
+}
+
+function showsGroupBox(node) {
+  return booleanAttr(node.attrs.groupBox ?? node.attrs.groupbox, true);
 }
 
 function drawShape(context, node, offsetX, offsetY) {
@@ -768,6 +776,13 @@ function appendMaybe(parent, child) {
   if (child) {
     parent.append(child);
   }
+}
+
+function booleanAttr(value, fallback) {
+  if (value == null) return fallback;
+  if (value === false || value === "false") return false;
+  if (value === true || value === "true") return true;
+  return Boolean(value);
 }
 
 function plural(count, label) {
