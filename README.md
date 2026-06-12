@@ -1,6 +1,10 @@
-# Inline Graph DSL
+# GraphSX
 
-A small scaffold for a React/HTML-like graph language:
+GraphSX is a React/JSX-like DSL for drawing SVG diagrams from inline markup. It supports reusable shapes, named ports, routing, Markdown fences, and CodeMirror live-preview widgets.
+
+Try the playground: https://slxuphys.github.io/graphsx/
+
+Current package name: `inline-graph-dsl`. The project/repo name is GraphSX.
 
 ```jsx
 <Graph>
@@ -18,14 +22,14 @@ A small scaffold for a React/HTML-like graph language:
 
 The parser returns a plain JavaScript model:
 
-- `nodes`: shape instances with computed leg coordinates
-- `edges`: connections between `node.leg` addresses
+- `nodes`: shape instances with computed `legs` maps for port coordinates
+- `edges`: connections between `node.port` addresses
 - `shapes`: reusable grouped shape definitions
 
 The package exports reusable parser and renderer helpers:
 
 ```js
-import { parseGraph, renderGraph } from "./src/index.js";
+import { parseGraph, renderGraph } from "inline-graph-dsl";
 
 const graph = parseGraph(source);
 renderGraph(document.querySelector("svg"), graph, { katex });
@@ -147,7 +151,7 @@ Use `style={{ ... }}` for SVG styling on shapes, ports, and edges:
 <Arrow from="A.out" to="B.in" style={{ stroke: "#7c3aed", strokeWidth: 3 }} />
 ```
 
-Style keys can use camelCase, such as `strokeWidth`; the playground maps them to SVG attributes. Reuse named styles with `useStyle`, and override them with inline `style`:
+Style keys can use camelCase, such as `strokeWidth`; the renderer maps them to SVG attributes. Reuse named styles with `useStyle`, and override them with inline `style`:
 
 ```jsx
 <Rect id="A" useStyle="blueBox" style={{ strokeWidth: 5 }} />
@@ -185,12 +189,12 @@ Grouped shapes are declared with `<Shape>` and can be instantiated by name:
       <Port id="in" left />
       <Port id="out" right />
     </Rect>
-    <Circ id="right" at={[160, 0]} r={25}>
+    <Circle id="right" at={[170, 25]} r={25}>
       <Port id="in" left />
-    </Circ>
+    </Circle>
     <Arrow from="left.out" to="right.in" />
     <Port id="in" target="left.in" left />
-    <Port id="out" target="right.in" right />
+    <Port id="out" target="right.right" right />
   </Shape>
 
   <Pair id="P1" at={[100, 100]} />
@@ -270,8 +274,6 @@ Nested repeats can build grids:
 
 Repeats also work inside `<Shape>` definitions, so a reusable shape can hide repeated internal structure behind public ports.
 
-The browser playground renders the normalized graph as SVG.
-
 ## Markdown
 
 GraphSX can be used from Markdown by installing the `markdown-it` plugin and then upgrading the rendered placeholders in the browser:
@@ -279,8 +281,8 @@ GraphSX can be used from Markdown by installing the `markdown-it` plugin and the
 ```js
 import MarkdownIt from "markdown-it";
 import katex from "katex";
-import { graphsxMarkdownIt, renderGraphSXBlocks } from "./src/index.js";
-import "./src/markdown.css";
+import { graphsxMarkdownIt, renderGraphSXBlocks } from "inline-graph-dsl";
+import "inline-graph-dsl/markdown.css";
 
 const md = new MarkdownIt().use(graphsxMarkdownIt);
 const preview = document.querySelector("#preview");
@@ -289,7 +291,7 @@ preview.innerHTML = md.render(markdownSource);
 renderGraphSXBlocks(preview, { katex });
 ```
 
-The optional `markdown.css` stylesheet centers rendered diagrams by default, keeps them responsive, and removes editor-style canvas chrome. Package users can import it as:
+The optional `markdown.css` stylesheet centers rendered diagrams by default, keeps them responsive, and removes editor-style canvas chrome:
 
 ```js
 import "inline-graph-dsl/markdown.css";
