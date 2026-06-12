@@ -13,3 +13,9 @@ export {
   flattenEdges,
   edgePathData
 } from "./renderer.js";
+
+export {
+  GRAPHSX_FENCE,
+  graphsxMarkdownIt,
+  renderGraphSXBlocks
+} from "./markdown.js";

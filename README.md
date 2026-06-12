@@ -260,3 +260,33 @@ Nested repeats can build grids:
 Repeats also work inside `<Shape>` definitions, so a reusable shape can hide repeated internal structure behind public ports.
 
 The browser playground renders the normalized graph as SVG.
+
+## Markdown
+
+GraphSX can be used from Markdown by installing the `markdown-it` plugin and then upgrading the rendered placeholders in the browser:
+
+```js
+import MarkdownIt from "markdown-it";
+import katex from "katex";
+import { graphsxMarkdownIt, renderGraphSXBlocks } from "./src/index.js";
+
+const md = new MarkdownIt().use(graphsxMarkdownIt);
+const preview = document.querySelector("#preview");
+
+preview.innerHTML = md.render(markdownSource);
+renderGraphSXBlocks(preview, { katex });
+```
+
+Markdown authors use the `graphsx` fence:
+
+````md
+```graphsx
+<Graph>
+  <Rect id="A" />
+  <Rect id="B" at={[220, 0]} />
+  <Arrow from="A.right" to="B.left" />
+</Graph>
+```
+````
+
+The plugin emits safe placeholders for `graphsx` fences. `renderGraphSXBlocks` finds those placeholders and replaces them with SVG using the normal parser and renderer.
