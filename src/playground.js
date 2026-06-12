@@ -398,20 +398,22 @@ const zoomStep = 1.2;
 const minZoom = 0.25;
 const maxZoom = 4;
 const storagePrefix = "graphsx-playground:v1:";
+const draftOptionValue = "__draft__";
 
 let zoom = 1;
 let pan = { x: 0, y: 0 };
 let renderedSize = { width: 720, height: 520 };
 let panStart = null;
 let editor = null;
+let applyingEditorChange = false;
 let currentMode = loadStoredValue("mode", "graph");
 const modeContent = {
-  graph: loadStoredValue("content:graph", graphExamples[0].source),
-  markdown: loadStoredValue("content:markdown", markdownExamples[0].source)
+  graph: loadStoredValue("content:graph", loadDraft("graph", graphExamples[0].source)),
+  markdown: loadStoredValue("content:markdown", loadDraft("markdown", markdownExamples[0].source))
 };
 const selectedExample = {
-  graph: loadStoredValue("example:graph", graphExamples[0].name),
-  markdown: loadStoredValue("example:markdown", markdownExamples[0].name)
+  graph: loadStoredValue("example:graph", draftOptionValue),
+  markdown: loadStoredValue("example:markdown", draftOptionValue)
 };
 
 if (!modes[currentMode]) {
@@ -428,8 +430,16 @@ editor = new EditorView({
     language.of(modes[currentMode].extension),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
+        if (applyingEditorChange) return;
+        const key = contentKey(currentMode);
+        if (selectedExample[key] !== draftOptionValue) {
+          selectedExample[key] = draftOptionValue;
+          storeValue(`example:${key}`, draftOptionValue);
+          populateExamples();
+        }
         modeContent[contentKey(currentMode)] = editorText();
         saveModeContent(contentKey(currentMode));
+        saveDraft(contentKey(currentMode));
         render();
       }
     })
@@ -496,12 +506,31 @@ mode.addEventListener("change", () => {
   }
 });
 example.addEventListener("change", () => {
+  const key = contentKey(currentMode);
+  if (selectedExample[key] === draftOptionValue) {
+    modeContent[key] = editorText();
+    saveDraft(key);
+  }
+
+  if (example.value === draftOptionValue) {
+    selectedExample[key] = draftOptionValue;
+    modeContent[key] = loadDraft(key, modeContent[key]);
+    storeValue(`example:${key}`, draftOptionValue);
+    saveModeContent(key);
+    setEditorText(modeContent[key]);
+    render();
+    if (currentMode === "graph") {
+      fitToView();
+    }
+    return;
+  }
+
   const item = modes[currentMode].examples.find((candidate) => candidate.name === example.value);
   if (!item) return;
-  selectedExample[contentKey(currentMode)] = item.name;
-  modeContent[contentKey(currentMode)] = item.source;
-  storeValue(`example:${contentKey(currentMode)}`, item.name);
-  saveModeContent(contentKey(currentMode));
+  selectedExample[key] = item.name;
+  modeContent[key] = item.source;
+  storeValue(`example:${key}`, item.name);
+  saveModeContent(key);
   setEditorText(item.source);
   render();
   if (currentMode === "graph") {
@@ -600,13 +629,18 @@ function editorText() {
 }
 
 function setEditorText(value) {
-  editor.dispatch({
-    changes: {
-      from: 0,
-      to: editor.state.doc.length,
-      insert: value
-    }
-  });
+  applyingEditorChange = true;
+  try {
+    editor.dispatch({
+      changes: {
+        from: 0,
+        to: editor.state.doc.length,
+        insert: value
+      }
+    });
+  } finally {
+    applyingEditorChange = false;
+  }
 }
 
 function setZoom(value, focus = null) {
@@ -649,13 +683,19 @@ function applyViewport() {
 
 function populateExamples() {
   example.textContent = "";
+  const draftOption = document.createElement("option");
+  draftOption.value = draftOptionValue;
+  draftOption.textContent = "Draft";
+  example.append(draftOption);
+
   for (const item of modes[currentMode].examples) {
     const option = document.createElement("option");
     option.value = item.name;
     option.textContent = item.name;
     example.append(option);
   }
-  example.value = selectedExample[contentKey(currentMode)];
+  const selected = selectedExample[contentKey(currentMode)];
+  example.value = modes[currentMode].examples.some((item) => item.name === selected) ? selected : draftOptionValue;
 }
 
 function contentKey(modeName) {
@@ -664,6 +704,14 @@ function contentKey(modeName) {
 
 function saveModeContent(key) {
   storeValue(`content:${key}`, modeContent[key]);
+}
+
+function saveDraft(key) {
+  storeValue(`draft:${key}`, modeContent[key]);
+}
+
+function loadDraft(key, fallback) {
+  return loadStoredValue(`draft:${key}`, fallback);
 }
 
 function loadStoredValue(key, fallback) {
