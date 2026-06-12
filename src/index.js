@@ -22,8 +22,3 @@ export {
   parseGraphWithLibraries,
   renderGraphSXBlocks
 } from "./markdown.js";
-
-export {
-  findGraphSXFences,
-  graphsxCodeMirrorLivePreview
-} from "./codemirror.js";

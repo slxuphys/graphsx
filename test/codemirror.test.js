@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { findGraphSXFences } from "../src/index.js";
+import { findGraphSXFences } from "../src/codemirror.js";
 
 test("finds GraphSX markdown fences for CodeMirror live preview", () => {
   const blocks = findGraphSXFences(`# Note

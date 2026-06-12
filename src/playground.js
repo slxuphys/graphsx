@@ -8,10 +8,12 @@ import { javascript, jsxLanguage } from "@codemirror/lang-javascript";
 import { markdown } from "@codemirror/lang-markdown";
 import { Compartment } from "@codemirror/state";
 import {
-  GRAPHSX_FENCE,
   findGraphSXFences,
+  graphsxCodeMirrorLivePreview
+} from "./codemirror.js";
+import {
+  GRAPHSX_FENCE,
   graphSummary,
-  graphsxCodeMirrorLivePreview,
   graphsxMarkdownIt,
   parseGraph,
   renderGraph,
