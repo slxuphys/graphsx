@@ -21,6 +21,10 @@
         box-sizing: border-box;
       }
 
+      [hidden] {
+        display: none !important;
+      }
+
       html,
       body {
         height: 100%;
@@ -41,6 +45,14 @@
         height: 100dvh;
         overflow: hidden;
         background: var(--line);
+      }
+
+      .app.live-preview-mode {
+        grid-template-columns: 280px minmax(0, 1fr);
+      }
+
+      .app.live-preview-mode .render-pane {
+        display: none;
       }
 
       .pane {
@@ -109,11 +121,19 @@
         background: #ffffff;
       }
 
-      .zoom-controls {
+      .zoom-controls,
+      .mode-controls {
         display: flex;
         align-items: center;
         gap: 6px;
+      }
+
+      .zoom-controls {
         margin-left: auto;
+      }
+
+      .mode-controls {
+        flex-wrap: wrap;
       }
 
       .zoom-value {
@@ -254,6 +274,16 @@
         user-select: none;
       }
 
+      .canvas-wrap.markdown-mode {
+        overflow: auto;
+        cursor: default;
+        background: #fbfcfa;
+      }
+
+      .canvas-wrap.markdown-mode > #graph {
+        display: none !important;
+      }
+
       svg {
         display: block;
         position: absolute;
@@ -298,10 +328,139 @@
         stroke-width: 2;
       }
 
+      .markdown-preview {
+        width: 100%;
+        max-width: 980px;
+        min-height: 100%;
+        margin: 0 auto;
+        padding: 32px;
+        color: #1e2724;
+        font-size: 15px;
+        line-height: 1.6;
+      }
+
+      .markdown-preview h1,
+      .markdown-preview h2,
+      .markdown-preview h3 {
+        margin: 24px 0 10px;
+        font-weight: 750;
+        letter-spacing: 0;
+      }
+
+      .markdown-preview h1 {
+        font-size: 26px;
+      }
+
+      .markdown-preview h2 {
+        font-size: 20px;
+      }
+
+      .markdown-preview h3 {
+        font-size: 16px;
+      }
+
+      .markdown-preview p,
+      .markdown-preview ul,
+      .markdown-preview ol {
+        margin: 0 0 14px;
+      }
+
+      .markdown-preview code {
+        border-radius: 4px;
+        padding: 2px 5px;
+        background: #eef2ee;
+        font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      }
+
+      .markdown-preview pre {
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        background: #f7f8f5;
+      }
+
+      .markdown-preview pre code {
+        padding: 0;
+        background: transparent;
+      }
+
+      .graphsx-live-widget {
+        display: block;
+        width: fit-content;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin: 0 auto;
+        border: 1px solid transparent;
+        border-radius: 8px;
+        padding: 20px 6px;
+        overflow: auto;
+        cursor: text;
+      }
+
+      .graphsx-live-widget:hover {
+        border-color: var(--line);
+        background: #ffffff;
+      }
+
+      .graphsx-live-widget svg {
+        position: static;
+        max-width: 100%;
+        height: auto;
+      }
+
+      .graphsx-live-def {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        max-width: 100%;
+        box-sizing: border-box;
+        margin: 0;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px 9px;
+        color: var(--muted);
+        background: #f7f8f5;
+        font: 12px/1.3 ui-sans-serif, system-ui, sans-serif;
+        cursor: text;
+      }
+
+      .graphsx-live-def:hover {
+        border-color: #b7c1bb;
+        color: var(--ink);
+        background: #ffffff;
+      }
+
+      .graphsx-live-def code {
+        border-radius: 4px;
+        padding: 2px 5px;
+        color: #1e2724;
+        background: #eef2ee;
+        font: 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      }
+
+      .graphsx-live-error {
+        box-sizing: border-box;
+        margin: 0;
+        border: 1px solid #f2b8b5;
+        border-radius: 6px;
+        padding: 12px;
+        color: var(--danger);
+        background: #fff8f7;
+        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        white-space: pre-wrap;
+      }
+
       @media (max-width: 860px) {
         .app {
           grid-template-columns: 1fr;
           grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+        }
+
+        .app.live-preview-mode {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto minmax(0, 1fr);
         }
 
         .syntax-pane {
@@ -382,10 +541,18 @@
             <h2>Repeat</h2>
             <div class="syntax-grid">
               <div><code>&lt;Repeat count={4} as="i" step={[80, 0]}&gt;...&lt;/Repeat&gt;</code></div>
-              <div><code>id="box{i}"</code></div>
-              <div><code>from="box{i}.out" to="box{i+1}.in"</code></div>
+              <div><code>id={`box${i}`}</code></div>
+              <div><code>from={`box${i}.out`} to={`box${i+1}.in`}</code></div>
             </div>
             <div>Nested repeats can use different names, such as <code>row</code> and <code>col</code>, for grids.</div>
+          </section>
+          <section class="syntax-section">
+            <h2>Comments</h2>
+            <div class="syntax-grid">
+              <div><code>{note}</code></div>
+              <div><code>{/* note */}</code></div>
+              <div><code>&lt;!-- note --&gt;</code></div>
+            </div>
           </section>
         </div>
       </aside>
@@ -393,21 +560,28 @@
       <section class="pane editor-pane" aria-label="Graph input">
         <div class="toolbar">
           <div class="toolbar-title">
-            <h1>Graph DSL</h1>
-            <select id="example" aria-label="Load example"></select>
+            <h1>GraphSX</h1>
+            <div class="mode-controls" aria-label="Editor controls">
+              <select id="mode" aria-label="Editor mode">
+                <option value="graph">GraphSX</option>
+                <option value="markdown">Markdown</option>
+                <option value="liveMarkdown">Live Preview</option>
+              </select>
+              <select id="example" aria-label="Load example"></select>
+            </div>
           </div>
           <div id="status" class="status">Ready</div>
         </div>
         <div id="editor" class="editor-host"></div>
         <div class="footer">
-          <span>Live parse</span>
+          <span id="modeHint">Live parse</span>
           <span>Nodes, legs, edges, grouped shapes</span>
         </div>
       </section>
 
       <section class="pane render-pane" aria-label="Rendered graph">
         <div class="toolbar">
-          <h1>Rendered Graph</h1>
+          <h1 id="renderTitle">Rendered Graph</h1>
           <div class="zoom-controls" aria-label="Zoom controls">
             <button class="icon-button" id="zoomOut" type="button" aria-label="Zoom out" title="Zoom out">-</button>
             <span class="zoom-value" id="zoomValue">100%</span>
@@ -418,6 +592,7 @@
           <div id="summary" class="status">0 nodes</div>
         </div>
         <div class="canvas-wrap">
+          <div id="markdownPreview" class="markdown-preview" hidden></div>
           <svg id="graph" role="img" aria-label="Rendered graph canvas"></svg>
         </div>
       </section>

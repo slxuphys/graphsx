@@ -1,10 +1,24 @@
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import "./markdown.css";
+import "./codemirror.css";
+import MarkdownIt from "markdown-it";
 import { basicSetup, EditorView } from "codemirror";
-import { javascript } from "@codemirror/lang-javascript";
-import { graphSummary, parseGraph, renderGraph } from "./index.js";
+import { javascript, jsxLanguage } from "@codemirror/lang-javascript";
+import { markdown } from "@codemirror/lang-markdown";
+import { Compartment } from "@codemirror/state";
+import {
+  GRAPHSX_FENCE,
+  findGraphSXFences,
+  graphSummary,
+  graphsxCodeMirrorLivePreview,
+  graphsxMarkdownIt,
+  parseGraph,
+  renderGraph,
+  renderGraphSXBlocks
+} from "./index.js";
 
-const examples = [
+const graphExamples = [
   {
     name: "Basic",
     source: `<Graph>
@@ -42,13 +56,13 @@ const examples = [
   </Shape>
 
   <Repeat count={6} as="i" step={[110, 0]}>
-    <Tensor id="A{i}" at={[100, 100]} site={i} />
-    <Point id="p{i}" at={[128, 210]} />
-    <Edge from="A{i}.phys" to="p{i}.center" useStyle="wire" />
+    <Tensor id={\`A\${i}\`} at={[100, 100]} site={i} />
+    <Point id={\`p\${i}\`} at={[128, 210]} />
+    <Edge from={\`A\${i}.phys\`} to={\`p\${i}.center\`} useStyle="wire" />
   </Repeat>
 
   <Repeat count={5} as="i">
-    <Edge from="A{i}.right" to="A{i+1}.left" useStyle="wire" />
+    <Edge from={\`A\${i}.right\`} to={\`A\${i+1}.left\`} useStyle="wire" />
   </Repeat>
 </Graph>`
   },
@@ -101,12 +115,280 @@ const examples = [
   }
 ];
 
+const markdownExamples = [
+  {
+    name: "Article",
+    source: `# Tensor Chain
+
+This Markdown preview renders \`graphsx\` fences inline, so the code block can live beside normal notes.
+
+\`\`\`graphsx
+<Graph route="straight">
+  <Style id="tensor" fill="#6aa4d8" stroke="#111111" strokeWidth={3} />
+  <Style id="wire" stroke="#111111" strokeWidth={2.5} />
+  <Style id="hidden" fill="transparent" stroke="transparent" strokeWidth={0} />
+
+  <Shape id="Tensor" groupBox={false}>
+    <Rect id="box" at={[0, 0]} size={[54, 54]} corner={8} useStyle="tensor" label={\`$A^{[\${site}]}$\`}>
+      <Port id="left" left r={0} useStyle="hidden" />
+      <Port id="right" right r={0} useStyle="hidden" />
+      <Port id="phys" bottom r={0} useStyle="hidden" />
+    </Rect>
+    <Port id="left" target="box.left" />
+    <Port id="right" target="box.right" />
+    <Port id="phys" target="box.phys" />
+  </Shape>
+
+  <Repeat count={5} as="i" step={[105, 0]}>
+    <Tensor id={\`A\${i}\`} at={[90, 90]} site={i} />
+    <Point id={\`p\${i}\`} at={[117, 190]} />
+    <Edge from={\`A\${i}.phys\`} to={\`p\${i}.center\`} useStyle="wire" />
+  </Repeat>
+
+  <Repeat count={4} as="i">
+    <Edge from={\`A\${i}.right\`} to={\`A\${i+1}.left\`} useStyle="wire" />
+  </Repeat>
+</Graph>
+\`\`\`
+
+The rest is ordinary Markdown, which means this can eventually plug into a note preview or documentation site.`
+  },
+  {
+    name: "Two Graphs",
+    source: `# Two GraphSX Blocks
+
+\`\`\`graphsx
+<Graph layout="dag" direction="right" route="orthogonal" corner={8}>
+  <Rect id="A" size={[90, 52]} label="A" />
+  <Rect id="B" size={[90, 52]} label="B" />
+  <Rect id="C" size={[90, 52]} label="C" />
+  <Arrow from="A.right" to="B.left" />
+  <Arrow from="A.right" to="C.left" />
+</Graph>
+\`\`\`
+
+Normal fenced code still stays as code:
+
+\`\`\`js
+console.log("not GraphSX");
+\`\`\`
+
+\`\`\`graphsx
+<Graph route="auto" grid={20} padding={18}>
+  <Rect id="A" at={[60, 120]} size={[100, 56]} label="A" />
+  <Rect id="Block" at={[230, 80]} size={[100, 150]} label="block" style={{ fill: "#f1f3f5", stroke: "#9aa3af" }} />
+  <Rect id="B" at={[450, 120]} size={[100, 56]} label="B" />
+  <Edge from="A.right" to="B.left" />
+</Graph>
+\`\`\``
+  },
+  {
+    name: "Library Reuse",
+    source: `# Matrix Product States and Operators
+
+Tensor network diagrams are a compact way to draw structured many-body objects. In a matrix product state (MPS), each site tensor has two virtual bonds connecting neighboring sites and one physical leg pointing to the local Hilbert space.
+
+The first hidden fence defines reusable visual styles. The second hidden fence defines two reusable tensor shapes. Both diagrams below import those libraries with \`use="theme tensors"\`.
+
+\`\`\`graphsx-defs theme
+<Style id="tensor" fill="#6aa4d8" stroke="#111111" strokeWidth={3} />
+<Style id="operator" fill="#f7c66f" stroke="#111111" strokeWidth={3} />
+<Style id="wire" stroke="#111111" strokeWidth={2.5} />
+<Style id="hiddenPort" fill="transparent" stroke="transparent" strokeWidth={0} />
+\`\`\`
+
+\`\`\`graphsx-defs tensors
+<Shape id="MpsTensor" groupBox={false}>
+  <Rect id="box" at={[0, 0]} size={[56, 56]} corner={8} useStyle="tensor" label={\`$A^{[\${site}]}$\`}>
+    <Port id="left" left r={0} useStyle="hiddenPort" />
+    <Port id="right" right r={0} useStyle="hiddenPort" />
+    <Port id="phys" bottom r={0} useStyle="hiddenPort" />
+  </Rect>
+  <Port id="left" target="box.left" />
+  <Port id="right" target="box.right" />
+  <Port id="phys" target="box.phys" />
+</Shape>
+
+<Shape id="MpoTensor" groupBox={false}>
+  <Rect id="box" at={[0, 0]} size={[62, 62]} corner={8} useStyle="operator" label={\`$W^{[\${site}]}$\`}>
+    <Port id="left" left r={0} useStyle="hiddenPort" />
+    <Port id="right" right r={0} useStyle="hiddenPort" />
+    <Port id="in" top r={0} useStyle="hiddenPort" />
+    <Port id="out" bottom r={0} useStyle="hiddenPort" />
+  </Rect>
+  <Port id="left" target="box.left" />
+  <Port id="right" target="box.right" />
+  <Port id="in" target="box.in" />
+  <Port id="out" target="box.out" />
+</Shape>
+\`\`\`
+
+## Matrix product state
+
+An MPS represents a vector by chaining local tensors. The horizontal wires are contracted virtual indices; the dangling vertical wires are physical indices.
+
+\`\`\`graphsx use="theme tensors"
+<Graph route="straight">
+  <Repeat count={5} as="i" step={[104, 0]}>
+    <MpsTensor id={\`A\${i}\`} at={[80, 70]} site={i} />
+    <Point id={\`p\${i}\`} at={[108, 166]} />
+    <Edge from={\`A\${i}.phys\`} to={\`p\${i}.center\`} useStyle="wire" />
+  </Repeat>
+
+  <Repeat count={4} as="i">
+    <Edge from={\`A\${i}.right\`} to={\`A\${i+1}.left\`} useStyle="wire" />
+  </Repeat>
+</Graph>
+\`\`\`
+
+## Matrix product operator
+
+An MPO represents an operator. Each site tensor carries two physical legs: an input index above and an output index below, while the horizontal virtual bonds connect neighboring operator tensors.
+
+\`\`\`graphsx use="theme tensors"
+<Graph route="straight">
+  <Repeat count={5} as="i" step={[112, 0]}>
+    <MpoTensor id={\`W\${i}\`} at={[80, 96]} site={i} />
+    <Point id={\`in\${i}\`} at={[111, 38]} />
+    <Point id={\`out\${i}\`} at={[111, 205]} />
+    <Edge from={\`in\${i}.center\`} to={\`W\${i}.in\`} useStyle="wire" />
+    <Edge from={\`W\${i}.out\`} to={\`out\${i}.center\`} useStyle="wire" />
+  </Repeat>
+
+  <Repeat count={4} as="i">
+    <Edge from={\`W\${i}.right\`} to={\`W\${i+1}.left\`} useStyle="wire" />
+  </Repeat>
+</Graph>
+\`\`\`
+
+The diagrams share the same style and shape libraries, but each rendered graph remains explicit about that dependency.`
+  },
+  {
+    name: "Brickwork Circuit",
+    source: `# Brickwork Quantum Circuit
+
+A brickwork circuit alternates layers of local two-qubit gates. One layer acts on pairs \`(0,1)\` and \`(2,3)\`; the next layer shifts over and acts on \`(1,2)\`. Repeating that staggered pattern creates a shallow circuit with local entangling structure.
+
+The reusable library below defines the wire style, invisible ports, and a two-qubit gate shape with four public connection ports.
+
+\`\`\`graphsx-defs circuit-theme
+<Style id="wire" stroke="#111111" strokeWidth={2.5} />
+<Style id="gate" fill="#c7dcff" stroke="#111111" strokeWidth={3} />
+<Style id="hiddenPort" fill="transparent" stroke="transparent" strokeWidth={0} />
+\`\`\`
+
+\`\`\`graphsx-defs circuit-shapes
+<Shape id="TwoQGate" groupBox={false}>
+  <Rect id="box" at={[0, 0]} size={[64, 106]} corner={8} useStyle="gate" label={gateLabel}>
+    <Port id="q0l" at={[0, 18]} angle={180} r={0} useStyle="hiddenPort" />
+    <Port id="q0r" at={[64, 18]} angle={0} r={0} useStyle="hiddenPort" />
+    <Port id="q1l" at={[0, 88]} angle={180} r={0} useStyle="hiddenPort" />
+    <Port id="q1r" at={[64, 88]} angle={0} r={0} useStyle="hiddenPort" />
+  </Rect>
+  <Port id="q0l" target="box.q0l" />
+  <Port id="q0r" target="box.q0r" />
+  <Port id="q1l" target="box.q1l" />
+  <Port id="q1r" target="box.q1r" />
+</Shape>
+\`\`\`
+
+## Four-qubit brickwork layer pattern
+
+Each horizontal line is a qubit worldline. The rectangular blocks are two-qubit gates; their ports are hidden, so only the gates and wires remain visible.
+
+\`\`\`graphsx use="circuit-theme circuit-shapes"
+<Graph route="straight">
+  <Repeat count={2} as="pair" step={[0, 140]}>
+    <Point id={\`pair\${pair}topIn\`} at={[50, 80]} />
+    <Point id={\`pair\${pair}botIn\`} at={[50, 150]} />
+    <Point id={\`pair\${pair}topOut\`} at={[820, 80]} />
+    <Point id={\`pair\${pair}botOut\`} at={[820, 150]} />
+  </Repeat>
+
+  <Repeat count={3} as="col" step={[260, 0]}>
+    <Repeat count={2} as="pair" step={[0, 140]}>
+      <TwoQGate id={\`E\${col}_\${pair}\`} at={[130, 62]} gateLabel={\`$U_{\${col}}$\`} />
+    </Repeat>
+  </Repeat>
+
+  <Repeat count={2} as="col" step={[260, 0]}>
+    <Repeat count={1} as="pair">
+      <TwoQGate id={\`O\${col}_\${pair}\`} at={[260, 132]} gateLabel={\`$V_{\${col}}$\`} />
+    </Repeat>
+  </Repeat>
+
+  <Repeat count={2} as="pair">
+    <Edge from={\`pair\${pair}topIn.center\`} to={\`E0_\${pair}.q0l\`} useStyle="wire" />
+    <Edge from={\`pair\${pair}botIn.center\`} to={\`E0_\${pair}.q1l\`} useStyle="wire" />
+    <Edge from={\`E2_\${pair}.q0r\`} to={\`pair\${pair}topOut.center\`} useStyle="wire" />
+    <Edge from={\`E2_\${pair}.q1r\`} to={\`pair\${pair}botOut.center\`} useStyle="wire" />
+  </Repeat>
+
+  <Repeat count={2} as="col">
+    <Edge from={\`E\${col}_0.q0r\`} to={\`E\${col+1}_0.q0l\`} useStyle="wire" />
+    <Edge from={\`E\${col}_1.q1r\`} to={\`E\${col+1}_1.q1l\`} useStyle="wire" />
+  </Repeat>
+
+  <Repeat count={2} as="col">
+    <Repeat count={1} as="pair">
+      <Edge from={\`E\${col}_\${pair}.q1r\`} to={\`O\${col}_\${pair}.q0l\`} useStyle="wire" />
+      <Edge from={\`E\${col}_\${pair+1}.q0r\`} to={\`O\${col}_\${pair}.q1l\`} useStyle="wire" />
+      <Edge from={\`O\${col}_\${pair}.q0r\`} to={\`E\${col+1}_\${pair}.q1l\`} useStyle="wire" />
+      <Edge from={\`O\${col}_\${pair}.q1r\`} to={\`E\${col+1}_\${pair+1}.q0l\`} useStyle="wire" />
+    </Repeat>
+  </Repeat>
+</Graph>
+\`\`\`
+
+The same shape library can be reused for longer circuits by increasing the even and odd column repeat counts.`
+  }
+];
+
+const modes = {
+  graph: {
+    title: "Rendered Graph",
+    examples: graphExamples,
+    extension: javascript({ jsx: true })
+  },
+  markdown: {
+    title: "Markdown Preview",
+    examples: markdownExamples,
+    extension: markdown({
+      codeLanguages: (info) => {
+        const name = info.trim().split(/\s+/)[0];
+        return name === "graphsx" || name === "graphsx-defs" ? jsxLanguage : null;
+      }
+    })
+  },
+  liveMarkdown: {
+    title: "Live Preview",
+    examples: markdownExamples,
+    extension: [
+      markdown({
+        codeLanguages: (info) => {
+          const name = info.trim().split(/\s+/)[0];
+          return name === "graphsx" || name === "graphsx-defs" ? jsxLanguage : null;
+        }
+      }),
+      graphsxCodeMirrorLivePreview({ katex })
+    ]
+  }
+};
+
+const md = new MarkdownIt({ html: false, linkify: true, typographer: true }).use(graphsxMarkdownIt);
+const language = new Compartment();
+const app = document.querySelector(".app");
 const editorHost = document.querySelector("#editor");
+const mode = document.querySelector("#mode");
 const example = document.querySelector("#example");
 const status = document.querySelector("#status");
 const summary = document.querySelector("#summary");
 const svg = document.querySelector("#graph");
 const canvas = document.querySelector(".canvas-wrap");
+const markdownPreview = document.querySelector("#markdownPreview");
+const renderTitle = document.querySelector("#renderTitle");
+const zoomControls = document.querySelector(".zoom-controls");
+const modeHint = document.querySelector("#modeHint");
 const zoomOut = document.querySelector("#zoomOut");
 const zoomIn = document.querySelector("#zoomIn");
 const zoomReset = document.querySelector("#zoomReset");
@@ -121,21 +403,26 @@ let pan = { x: 0, y: 0 };
 let renderedSize = { width: 720, height: 520 };
 let panStart = null;
 let editor = null;
+let currentMode = "graph";
+const modeContent = {
+  graph: graphExamples[0].source,
+  markdown: markdownExamples[0].source
+};
+const selectedExample = {
+  graph: graphExamples[0].name,
+  markdown: markdownExamples[0].name
+};
 
-for (const item of examples) {
-  const option = document.createElement("option");
-  option.value = item.name;
-  option.textContent = item.name;
-  example.append(option);
-}
+populateExamples();
 
 editor = new EditorView({
-  doc: examples[0].source,
+  doc: modeContent[currentMode],
   extensions: [
     basicSetup,
-    javascript({ jsx: true }),
+    language.of(modes[currentMode].extension),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
+        modeContent[contentKey(currentMode)] = editorText();
         render();
       }
     })
@@ -145,12 +432,14 @@ editor = new EditorView({
 zoomOut.addEventListener("click", () => setZoom(zoom / zoomStep, canvasCenter()));
 zoomIn.addEventListener("click", () => setZoom(zoom * zoomStep, canvasCenter()));
 zoomReset.addEventListener("click", () => {
+  if (currentMode !== "graph") return;
   zoom = 1;
   pan = { x: 0, y: 0 };
   applyViewport();
 });
 zoomFit.addEventListener("click", fitToView);
 canvas.addEventListener("wheel", (event) => {
+  if (currentMode !== "graph") return;
   if (!event.ctrlKey && !event.metaKey) return;
   event.preventDefault();
   const next = event.deltaY > 0 ? zoom / zoomStep : zoom * zoomStep;
@@ -160,6 +449,7 @@ canvas.addEventListener("wheel", (event) => {
   });
 }, { passive: false });
 canvas.addEventListener("pointerdown", (event) => {
+  if (currentMode !== "graph") return;
   if (event.button !== 0) return;
   event.preventDefault();
   panStart = {
@@ -183,15 +473,32 @@ canvas.addEventListener("pointermove", (event) => {
 });
 canvas.addEventListener("pointerup", endPan);
 canvas.addEventListener("pointercancel", endPan);
+mode.addEventListener("change", () => {
+  modeContent[contentKey(currentMode)] = editorText();
+  currentMode = mode.value;
+  editor.dispatch({
+    effects: language.reconfigure(modes[currentMode].extension)
+  });
+  populateExamples();
+  setEditorText(modeContent[contentKey(currentMode)]);
+  render();
+  if (currentMode === "graph") {
+    fitToView();
+  }
+});
 example.addEventListener("change", () => {
-  const item = examples.find((candidate) => candidate.name === example.value);
+  const item = modes[currentMode].examples.find((candidate) => candidate.name === example.value);
   if (!item) return;
+  selectedExample[contentKey(currentMode)] = item.name;
+  modeContent[contentKey(currentMode)] = item.source;
   setEditorText(item.source);
   render();
-  fitToView();
+  if (currentMode === "graph") {
+    fitToView();
+  }
 });
 window.addEventListener("resize", () => {
-  if (!status.classList.contains("error")) {
+  if (currentMode === "graph" && !status.classList.contains("error")) {
     fitToView();
   }
 });
@@ -200,13 +507,77 @@ render();
 fitToView();
 
 function render() {
+  if (currentMode === "markdown") {
+    renderMarkdownMode();
+    return;
+  }
+  if (currentMode === "liveMarkdown") {
+    renderLiveMarkdownMode();
+    return;
+  }
+  renderGraphMode();
+}
+
+function renderGraphMode() {
   try {
+    app.classList.remove("live-preview-mode");
+    canvas.classList.remove("markdown-mode");
+    svg.hidden = false;
+    markdownPreview.hidden = true;
+    zoomControls.hidden = false;
+    renderTitle.textContent = modes.graph.title;
+    modeHint.textContent = "Live parse";
     const graph = parseGraph(editorText());
     renderedSize = renderGraph(svg, graph, { katex });
     applyViewport();
     status.textContent = "Parsed";
     status.classList.remove("error");
     summary.textContent = graphSummary(graph).text;
+  } catch (error) {
+    status.textContent = error.message;
+    status.classList.add("error");
+  }
+}
+
+function renderMarkdownMode() {
+  try {
+    app.classList.remove("live-preview-mode");
+    canvas.classList.add("markdown-mode");
+    svg.hidden = true;
+    svg.replaceChildren();
+    svg.removeAttribute("viewBox");
+    svg.removeAttribute("style");
+    markdownPreview.hidden = false;
+    zoomControls.hidden = true;
+    renderTitle.textContent = modes.markdown.title;
+    modeHint.textContent = "Markdown source with side preview";
+    markdownPreview.innerHTML = md.render(editorText());
+    renderGraphSXBlocks(markdownPreview, { katex });
+    status.textContent = "Rendered Markdown";
+    status.classList.remove("error");
+    summary.textContent = `${markdownPreview.querySelectorAll(".graphsx-block svg").length} GraphSX block(s)`;
+  } catch (error) {
+    status.textContent = error.message;
+    status.classList.add("error");
+  }
+}
+
+function renderLiveMarkdownMode() {
+  try {
+    app.classList.add("live-preview-mode");
+    canvas.classList.add("markdown-mode");
+    svg.hidden = true;
+    svg.replaceChildren();
+    svg.removeAttribute("viewBox");
+    svg.removeAttribute("style");
+    markdownPreview.hidden = true;
+    zoomControls.hidden = true;
+    renderTitle.textContent = modes.liveMarkdown.title;
+    modeHint.textContent = "Markdown with in-place GraphSX widgets";
+    const count = findGraphSXFences(editorText()).filter((block) => block.info.name === GRAPHSX_FENCE).length;
+    status.textContent = "Rendered in editor";
+    status.classList.remove("error");
+    summary.textContent = `${count} GraphSX widget(s)`;
   } catch (error) {
     status.textContent = error.message;
     status.classList.add("error");
@@ -242,6 +613,7 @@ function setZoom(value, focus = null) {
 }
 
 function fitToView() {
+  if (currentMode !== "graph") return;
   const availableWidth = Math.max(1, canvas.clientWidth - 48);
   const availableHeight = Math.max(1, canvas.clientHeight - 48);
   zoom = clamp(
@@ -257,10 +629,26 @@ function fitToView() {
 }
 
 function applyViewport() {
+  if (currentMode !== "graph") return;
   svg.style.width = `${renderedSize.width}px`;
   svg.style.height = `${renderedSize.height}px`;
   svg.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
   zoomValue.textContent = `${Math.round(zoom * 100)}%`;
+}
+
+function populateExamples() {
+  example.textContent = "";
+  for (const item of modes[currentMode].examples) {
+    const option = document.createElement("option");
+    option.value = item.name;
+    option.textContent = item.name;
+    example.append(option);
+  }
+  example.value = selectedExample[contentKey(currentMode)];
+}
+
+function contentKey(modeName) {
+  return modeName === "liveMarkdown" ? "markdown" : modeName;
 }
 
 function canvasCenter() {

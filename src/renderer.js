@@ -5,10 +5,11 @@ export function renderGraph(svg, graph, options = {}) {
   const edges = flattenEdges(graph);
   const legs = indexLegs(nodes);
   const bounds = getBounds(nodes, edges, legs);
-  const width = Math.max(options.minWidth ?? 720, bounds.maxX - bounds.minX + 160);
-  const height = Math.max(options.minHeight ?? 520, bounds.maxY - bounds.minY + 160);
-  const offsetX = 80 - bounds.minX;
-  const offsetY = 80 - bounds.minY;
+  const viewportPadding = Number(options.viewportPadding ?? 80);
+  const width = Math.max(options.minWidth ?? 720, bounds.maxX - bounds.minX + viewportPadding * 2);
+  const height = Math.max(options.minHeight ?? 520, bounds.maxY - bounds.minY + viewportPadding * 2);
+  const offsetX = viewportPadding - bounds.minX;
+  const offsetY = viewportPadding - bounds.minY;
   const context = {
     document: options.document ?? svg.ownerDocument ?? document,
     katex: options.katex ?? null,

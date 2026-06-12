@@ -153,6 +153,17 @@ Style keys can use camelCase, such as `strokeWidth`; the playground maps them to
 <Rect id="A" useStyle="blueBox" style={{ strokeWidth: 5 }} />
 ```
 
+Comments are ignored anywhere whitespace is allowed. Short braced notes, JSX-style comments, and HTML comments are accepted:
+
+```jsx
+<Graph>
+  {quick note}
+  {/* a note for readers */}
+  <!-- also accepted -->
+  <Rect id="A" />
+</Graph>
+```
+
 ## Run
 
 ```bash
@@ -214,12 +225,12 @@ Custom shape instances can pass arbitrary props into the shape body. Use a backt
   </Shape>
 
   <Repeat count={4} as="i" step={[100, 0]}>
-    <Tensor id="A{i}" at={[100, 100]} site={i} />
+    <Tensor id={`A${i}`} at={[100, 100]} site={i} />
   </Repeat>
 </Graph>
 ```
 
-Backtick strings use `${name}` for shape prop substitution. Normal quoted strings do not read shape props, though repeat shorthand such as `{i}` still expands as before. Props stay on the grouped shape instance even when children reference them. Use a custom prop such as `boxLabel`, `upperLabel`, or `site` when a value is meant only for internal children.
+Backtick strings use `${name}` for shape prop substitution and `${i+1}` / `${i-1}` for simple repeat-index offsets. Normal quoted strings do not read shape props. Legacy repeat shorthand such as `"A{i}"` still works, but new examples should prefer backtick templates because they are closer to JSX behavior. Props stay on the grouped shape instance even when children reference them. Use a custom prop such as `boxLabel`, `upperLabel`, or `site` when a value is meant only for internal children.
 
 ## Repeat
 
@@ -228,19 +239,19 @@ Use `<Repeat>` to expand repeated nodes or edges before the graph is built:
 ```jsx
 <Graph>
   <Repeat count={4} as="i" step={[80, 0]}>
-    <Rect id="box{i}" at={[100, 100]} size={[60, 40]} label="$x_{i}$">
+    <Rect id={`box${i}`} at={[100, 100]} size={[60, 40]} label={`$x_{${i}}$`}>
       <Port id="in" left />
       <Port id="out" right />
     </Rect>
   </Repeat>
 
   <Repeat count={3} as="i">
-    <Arrow from="box{i}.out" to="box{i+1}.in" />
+    <Arrow from={`box${i}.out`} to={`box${i+1}.in`} />
   </Repeat>
 </Graph>
 ```
 
-`{i}` is replaced with the loop index. `{i+1}` and `{i-1}` are supported for neighboring edges. `step` offsets repeated shapes; ports remain local to their shape.
+`${i}` is replaced with the loop index inside backtick attributes. `${i+1}` and `${i-1}` are supported for neighboring edges. `step` offsets repeated shapes; ports remain local to their shape.
 
 Nested repeats can build grids:
 
@@ -248,7 +259,7 @@ Nested repeats can build grids:
 <Graph>
   <Repeat count={2} as="row" step={[0, 90]}>
     <Repeat count={3} as="col" step={[100, 0]}>
-      <Rect id="cell-{row}-{col}" at={[100, 100]} size={[70, 50]} label="cell {row},{col}">
+      <Rect id={`cell-${row}-${col}`} at={[100, 100]} size={[70, 50]} label={`cell ${row},${col}`}>
         <Port id="left" left />
         <Port id="right" right />
       </Rect>
@@ -269,6 +280,7 @@ GraphSX can be used from Markdown by installing the `markdown-it` plugin and the
 import MarkdownIt from "markdown-it";
 import katex from "katex";
 import { graphsxMarkdownIt, renderGraphSXBlocks } from "./src/index.js";
+import "./src/markdown.css";
 
 const md = new MarkdownIt().use(graphsxMarkdownIt);
 const preview = document.querySelector("#preview");
@@ -276,6 +288,14 @@ const preview = document.querySelector("#preview");
 preview.innerHTML = md.render(markdownSource);
 renderGraphSXBlocks(preview, { katex });
 ```
+
+The optional `markdown.css` stylesheet centers rendered diagrams by default, keeps them responsive, and removes editor-style canvas chrome. Package users can import it as:
+
+```js
+import "inline-graph-dsl/markdown.css";
+```
+
+Override `.graphsx-rendered` or `.graphsx-block` in app CSS when a document needs left-aligned or custom diagram layout.
 
 Markdown authors use the `graphsx` fence:
 
@@ -290,3 +310,59 @@ Markdown authors use the `graphsx` fence:
 ````
 
 The plugin emits safe placeholders for `graphsx` fences. `renderGraphSXBlocks` finds those placeholders and replaces them with SVG using the normal parser and renderer.
+
+Definitions can be shared across Markdown fences with explicit document-local libraries. A `graphsx-defs` fence is hidden in the preview, and a graph imports one or more libraries with `use`:
+
+````md
+```graphsx-defs colors
+<Style id="tensor" fill="#6aa4d8" stroke="#111111" />
+<Style id="wire" stroke="#111111" strokeWidth={2.5} />
+```
+
+```graphsx-defs mps
+<Shape id="Tensor" groupBox={false}>
+  <Rect id="box" at={[0, 0]} size={[56, 56]} corner={8} useStyle="tensor" />
+  <Port id="left" target="box.left" />
+  <Port id="right" target="box.right" />
+</Shape>
+```
+
+```graphsx use="colors mps"
+<Graph route="straight">
+  <Tensor id="A0" at={[0, 0]} />
+  <Tensor id="A1" at={[110, 0]} />
+  <Edge from="A0.right" to="A1.left" useStyle="wire" />
+</Graph>
+```
+````
+
+Multiple library names can be separated by spaces or commas. They are applied left to right; later libraries and the graph fence itself can override earlier styles or shapes with the same id.
+
+## CodeMirror Live Preview
+
+Use the CodeMirror extension to render `graphsx` fences as editable live widgets inside a Markdown editor:
+
+```js
+import { EditorView, basicSetup } from "codemirror";
+import { markdown } from "@codemirror/lang-markdown";
+import { jsxLanguage } from "@codemirror/lang-javascript";
+import { graphsxCodeMirrorLivePreview } from "inline-graph-dsl/codemirror";
+import "inline-graph-dsl/codemirror.css";
+
+new EditorView({
+  doc,
+  extensions: [
+    basicSetup,
+    markdown({
+      codeLanguages: (info) => {
+        const name = info.trim().split(/\s+/)[0];
+        return name === "graphsx" || name === "graphsx-defs" ? jsxLanguage : null;
+      }
+    }),
+    graphsxCodeMirrorLivePreview({ katex })
+  ],
+  parent: document.querySelector("#editor")
+});
+```
+
+When the cursor is outside a `graphsx` fence, the fence renders as an SVG widget. Clicking the widget moves the cursor into the original fenced code so it can be edited. `graphsx-defs` fences render as compact library markers and still feed reusable shapes/styles to later graph fences.

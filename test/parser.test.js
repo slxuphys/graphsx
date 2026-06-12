@@ -38,6 +38,38 @@ test("parses multiple graph blocks", () => {
   assert.equal(graphs.length, 2);
 });
 
+test("ignores JSX and HTML comments", () => {
+  const graph = parseGraph(`
+    {/* top-level graph note */}
+    <Graph>
+      <!-- shape note -->
+      {standalone note}
+      <Rect id="A" />
+      {/* edge note */}
+      <Rect id="B" at={[200, 0]} />
+      <Arrow from="A.right" to="B.left" />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes.length, 2);
+  assert.equal(graph.edges.length, 1);
+});
+
+test("rejects unclosed comments", () => {
+  assert.throws(
+    () => parseGraph(`<Graph>{/* missing end <Rect id="A" /></Graph>`),
+    /Unclosed JSX comment/
+  );
+  assert.throws(
+    () => parseGraph(`<Graph><!-- missing end <Rect id="A" /></Graph>`),
+    /Unclosed HTML comment/
+  );
+  assert.throws(
+    () => parseGraph(`<Graph>{missing end <Rect id="A" /></Graph>`),
+    /Unclosed braced comment/
+  );
+});
+
 test("supports grouped shape definitions", () => {
   const graph = parseGraph(`
     <Graph>
@@ -516,6 +548,41 @@ test("expands repeated nodes and edges", () => {
   assert.equal(graph.nodes[2].legs.in.x, 260);
   assert.equal(graph.edges[2].from, "box2.out");
   assert.equal(graph.edges[2].to, "box3.in");
+});
+
+test("expands repeat variables in backtick templates", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Repeat count={4} as="i" step={[80, 0]}>
+        <Rect id={\`box\${i}\`} at={[100, 100]} size={[60, 40]} label={\`$x_{\${i+1}}$\`}>
+          <Port id="in" left />
+          <Port id="out" right />
+        </Rect>
+      </Repeat>
+      <Repeat count={3} as="i">
+        <Arrow from={\`box\${i}.out\`} to={\`box\${i+1}.in\`} />
+      </Repeat>
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].id, "box0");
+  assert.equal(graph.nodes[0].attrs.label, "$x_{1}$");
+  assert.equal(graph.nodes[3].attrs.label, "$x_{4}$");
+  assert.equal(graph.edges[2].from, "box2.out");
+  assert.equal(graph.edges[2].to, "box3.in");
+});
+
+test("keeps unresolved non-strict backtick templates for later shape prop substitution", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="Box">
+        <Rect id="body" label={\`box-\${name}\`} />
+      </Shape>
+      <Box id="B" name="left" />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].children[0].attrs.label, "box-left");
 });
 
 test("preserves latex label groups for multi-digit repeat indices", () => {

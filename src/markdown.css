@@ -1,0 +1,24 @@
+.graphsx-defs {
+  display: none !important;
+}
+
+.graphsx-rendered,
+.graphsx-block[data-graphsx] {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 1rem auto;
+  overflow: auto;
+}
+
+.graphsx-rendered > svg {
+  display: block;
+  position: static;
+  max-width: 100%;
+  height: auto;
+}
+
+.graphsx-error {
+  color: #b42318;
+  white-space: pre-wrap;
+}

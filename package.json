@@ -4,6 +4,12 @@
   "description": "A small React-like inline graph DSL parser and model builder.",
   "type": "module",
   "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./codemirror": "./src/codemirror.js",
+    "./codemirror.css": "./src/codemirror.css",
+    "./markdown.css": "./src/markdown.css"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "playground": "vite --host 127.0.0.1",
@@ -21,6 +27,7 @@
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-markdown": "^6.5.0",
     "codemirror": "^6.0.2",
     "katex": "^0.17.0",
     "markdown-it": "^14.2.0"

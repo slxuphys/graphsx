@@ -683,9 +683,9 @@ function substitutePropValue(value, scope) {
 function substituteTemplate(source, scope) {
   return source.replace(/\{([^{}]+)\}/g, (match, expression, offset) => {
     const values = expression.split(",").map((term) => evaluateTemplateTerm(term.trim(), scope));
-    if (!values.every((value) => value != null)) return match;
+    if (!values.every((value) => value.resolved)) return match;
 
-    const replacement = values.join(",");
+    const replacement = values.map((value) => value.value).join(",");
     return source[offset - 1] === "_" || source[offset - 1] === "^" ? `{${replacement}}` : replacement;
   });
 }
@@ -694,16 +694,16 @@ function renderTemplateLiteral(source, scope, options) {
   const consumed = new Set();
   let complete = true;
   const value = source.replace(/\$\{([^{}]+)\}/g, (match, expression) => {
-    const name = expression.trim();
-    if (!scope.has(name)) {
+    const result = evaluateTemplateTerm(expression.trim(), scope);
+    if (!result.resolved) {
       if (options.strict) {
-        throw new GraphDslError(`Unknown template variable "${name}"`);
+        throw new GraphDslError(`Unknown template variable "${expression.trim()}"`);
       }
       complete = false;
       return match;
     }
-    consumed.add(name);
-    return scope.get(name);
+    consumed.add(result.name);
+    return result.value;
   });
 
   return { value, consumed, complete };
@@ -711,8 +711,17 @@ function renderTemplateLiteral(source, scope, options) {
 
 function evaluateTemplateTerm(term, scope) {
   const match = term.match(/^([A-Za-z_][A-Za-z0-9_]*)([+-]\d+)?$/);
-  if (!match || !scope.has(match[1])) return null;
-  return scope.get(match[1]) + Number(match[2] ?? 0);
+  if (!match || !scope.has(match[1])) return { resolved: false };
+  const [, name, offset] = match;
+  const value = scope.get(name);
+  if (offset == null) {
+    return { resolved: true, name, value };
+  }
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return { resolved: false };
+  }
+  return { resolved: true, name, value: number + Number(offset) };
 }
 
 function offsetPositionAttrs(attrs, name, offset) {
@@ -876,21 +885,21 @@ class MarkupParser {
     const attrs = {};
 
     while (!this.isDone()) {
-      this.skipWhitespace();
+      this.skipWhitespace({ comments: false });
       const char = this.peek();
       if (char === ">" || (char === "/" && this.source[this.index + 1] === ">")) {
         return attrs;
       }
 
       const name = this.readName();
-      this.skipWhitespace();
+      this.skipWhitespace({ comments: false });
 
       if (!this.consume("=")) {
         attrs[name] = true;
         continue;
       }
 
-      this.skipWhitespace();
+      this.skipWhitespace({ comments: false });
       attrs[name] = this.readAttrValue();
     }
 
@@ -956,10 +965,61 @@ class MarkupParser {
     return this.source.slice(start, this.index);
   }
 
-  skipWhitespace() {
-    while (!this.isDone() && /\s/.test(this.peek())) {
-      this.index += 1;
+  skipWhitespace(options = {}) {
+    const comments = options.comments !== false;
+
+    while (!this.isDone()) {
+      if (/\s/.test(this.peek())) {
+        this.index += 1;
+        continue;
+      }
+      if (comments && this.skipComment()) {
+        continue;
+      }
+      break;
     }
+  }
+
+  skipComment() {
+    if (this.consume("{/*")) {
+      const end = this.source.indexOf("*/}", this.index);
+      if (end === -1) {
+        throw new GraphDslError("Unclosed JSX comment", this.index);
+      }
+      this.index = end + 3;
+      return true;
+    }
+
+    if (this.consume("<!--")) {
+      const end = this.source.indexOf("-->", this.index);
+      if (end === -1) {
+        throw new GraphDslError("Unclosed HTML comment", this.index);
+      }
+      this.index = end + 3;
+      return true;
+    }
+
+    if (this.consume("{")) {
+      this.skipBracedComment();
+      return true;
+    }
+
+    return false;
+  }
+
+  skipBracedComment() {
+    const start = this.index;
+    let depth = 1;
+
+    while (!this.isDone()) {
+      const char = this.peek();
+      if (char === "{") depth += 1;
+      if (char === "}") depth -= 1;
+      this.index += 1;
+      if (depth === 0) return;
+    }
+
+    throw new GraphDslError("Unclosed braced comment", start);
   }
 
   consume(value) {

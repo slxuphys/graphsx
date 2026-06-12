@@ -1,0 +1,66 @@
+.graphsx-live-widget {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0 auto;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 20px 6px;
+  overflow: auto;
+  cursor: text;
+}
+
+.graphsx-live-widget:hover {
+  border-color: #d8ded8;
+  background: #ffffff;
+}
+
+.graphsx-live-widget svg {
+  position: static;
+  max-width: 100%;
+  height: auto;
+}
+
+.graphsx-live-def {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  border: 1px solid #d8ded8;
+  border-radius: 6px;
+  padding: 8px 9px;
+  color: #68736e;
+  background: #f7f8f5;
+  font: 12px/1.3 ui-sans-serif, system-ui, sans-serif;
+  cursor: text;
+}
+
+.graphsx-live-def:hover {
+  border-color: #b7c1bb;
+  color: #1e2724;
+  background: #ffffff;
+}
+
+.graphsx-live-def code {
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: #1e2724;
+  background: #eef2ee;
+  font: 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+.graphsx-live-error {
+  box-sizing: border-box;
+  margin: 0;
+  border: 1px solid #f2b8b5;
+  border-radius: 6px;
+  padding: 12px;
+  color: #b42318;
+  background: #fff8f7;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  white-space: pre-wrap;
+}

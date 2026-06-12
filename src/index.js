@@ -16,6 +16,14 @@ export {
 
 export {
   GRAPHSX_FENCE,
+  GRAPHSX_DEFS_FENCE,
   graphsxMarkdownIt,
+  parseFenceInfo,
+  parseGraphWithLibraries,
   renderGraphSXBlocks
 } from "./markdown.js";
+
+export {
+  findGraphSXFences,
+  graphsxCodeMirrorLivePreview
+} from "./codemirror.js";
