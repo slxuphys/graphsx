@@ -11,6 +11,8 @@
     "./markdown.css": "./src/markdown.css"
   },
   "scripts": {
+    "build": "vite build",
+    "build:pages": "vite build --base=/graphsx/",
     "dev": "vite --host 127.0.0.1",
     "playground": "vite --host 127.0.0.1",
     "test": "node --test"
