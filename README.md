@@ -22,6 +22,15 @@ The parser returns a plain JavaScript model:
 - `edges`: connections between `node.leg` addresses
 - `shapes`: reusable grouped shape definitions
 
+The package exports reusable parser and renderer helpers:
+
+```js
+import { parseGraph, renderGraph } from "./src/index.js";
+
+const graph = parseGraph(source);
+renderGraph(document.querySelector("svg"), graph, { katex });
+```
+
 Labels are opt-in. Use `label="xy"` for plain text and `label="$\alpha$"` for KaTeX math. If a node or port has no `label` prop, no label is rendered.
 
 Ports can use side shorthand or custom local coordinates:

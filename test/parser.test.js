@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseGraph, parseGraphs } from "../src/index.js";
+import { edgePathData, graphSummary, parseGraph, parseGraphs } from "../src/index.js";
 
 test("parses nodes, legs, and edges", () => {
   const graph = parseGraph(`
@@ -151,6 +151,32 @@ test("preserves edge route options", () => {
 
   assert.equal(graph.edges[0].attrs.route, "orthogonal");
   assert.equal(graph.edges[0].attrs.stub, 40);
+});
+
+test("summarizes rendered graph model", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" />
+      <Rect id="B" at={[200, 0]} />
+      <Arrow from="A.right" to="B.left" />
+    </Graph>
+  `);
+
+  assert.deepEqual(graphSummary(graph), {
+    nodeCount: 2,
+    edgeCount: 1,
+    text: "2 nodes, 1 edge"
+  });
+});
+
+test("generates reusable orthogonal edge path data", () => {
+  const path = edgePathData(
+    { attrs: { route: "orthogonal", stub: 20 } },
+    { x: 100, y: 100, angle: 0 },
+    { x: 200, y: 160, angle: 90 }
+  );
+
+  assert.equal(path, "M 100 100 L 120 100 L 160 100 L 160 180 L 200 180 L 200 160");
 });
 
 test("explicit side ports override default side ports", () => {
