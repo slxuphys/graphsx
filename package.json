@@ -10,6 +10,16 @@
     "./codemirror.css": "./src/codemirror.css",
     "./markdown.css": "./src/markdown.css"
   },
+  "files": [
+    "src/index.js",
+    "src/parser.js",
+    "src/renderer.js",
+    "src/markdown.js",
+    "src/markdown.css",
+    "src/codemirror.js",
+    "src/codemirror.css",
+    "README.md"
+  ],
   "scripts": {
     "build": "vite build",
     "build:pages": "vite build --base=/graphsx/",
