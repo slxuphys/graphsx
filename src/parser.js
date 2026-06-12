@@ -13,6 +13,7 @@ const BUILTIN_SHAPE_TAGS = new Map([
   ["anchor", "point"]
 ]);
 const EDGE_TAGS = new Set(["Edge", "Arrow", "Link"]);
+const PATH_TAGS = new Set(["Path", "path"]);
 const PORT_TAGS = new Set(["Port", "Leg"]);
 const STYLE_TAGS = new Set(["Style"]);
 const REPEAT_TAGS = new Set(["Repeat"]);
@@ -77,13 +78,15 @@ export function buildGraphModel(graphElement) {
   });
 
   const edges = graphElement.children.filter(isEdgeElement).map((edge) => buildEdge(edge, styles));
+  const paths = graphElement.children.filter(isPathElement).map((path) => buildPath(path, styles, { x: 0, y: 0 }));
   const graph = {
     type: "graph",
     attrs: { ...graphElement.attrs },
     styles: Object.fromEntries(styles),
     shapes: Object.fromEntries([...shapes].map(([id, shape]) => [id, describeShape(shape)])),
     nodes,
-    edges
+    edges,
+    paths
   };
 
   applyLayout(graph);
@@ -107,7 +110,8 @@ function buildNode(nodeElement, shapes, styles, context) {
     attrs: normalized.attrs,
     legs: {},
     children: [],
-    edges: []
+    edges: [],
+    paths: []
   };
 
   if (shapes.has(normalized.shape)) {
@@ -139,6 +143,10 @@ function buildGroupedNode(instance, shapeElement, shapes, styles) {
   instance.edges = shapeElement.children
     .filter(isEdgeElement)
     .map((edge) => prefixGroupedEdge(buildEdge(edge, styles), instance.id));
+
+  instance.paths = shapeElement.children
+    .filter(isPathElement)
+    .map((path) => buildPath(path, styles, childContext));
 
   for (const legElement of shapeElement.children.filter(isPortElement)) {
     const leg = buildLeg(legElement, instance, styles);
@@ -241,6 +249,33 @@ function buildEdge(edgeElement, styles) {
     to: requiredAttr(edgeElement, "to"),
     attrs: resolveStyledAttrs(edgeElement.attrs, styles)
   };
+}
+
+function buildPath(pathElement, styles, context) {
+  const attrs = resolveStyledAttrs(pathElement.attrs, styles);
+  return {
+    id: attrs.id ?? null,
+    points: normalizePathPoints(attrs.points, context),
+    attrs
+  };
+}
+
+function normalizePathPoints(points, context) {
+  if (points == null) return null;
+  if (!Array.isArray(points)) {
+    throw new GraphDslError("\"points\" must be an array of [x, y] pairs");
+  }
+  return points.map((point) => {
+    if (!Array.isArray(point) || point.length < 2) {
+      throw new GraphDslError("\"points\" must be an array of [x, y] pairs");
+    }
+    const x = Number(point[0]);
+    const y = Number(point[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new GraphDslError("Path points must be numbers");
+    }
+    return { x: x + context.x, y: y + context.y };
+  });
 }
 
 function prefixGroupedEdge(edge, namespace) {
@@ -458,8 +493,9 @@ function describeShape(shapeElement) {
     id: requiredAttr(shapeElement, "id"),
     attrs: { ...shapeElement.attrs },
     nodes: shapeElement.children
-      .filter((node) => node.type === "element" && !isEdgeElement(node) && !isPortElement(node))
+      .filter((node) => node.type === "element" && !isEdgeElement(node) && !isPathElement(node) && !isPortElement(node))
       .map((node) => node.attrs.id),
+    paths: shapeElement.children.filter(isPathElement).map((path) => path.attrs.id).filter(Boolean),
     legs: shapeElement.children.filter(isPortElement).map((leg) => leg.attrs.id)
   };
 }
@@ -480,6 +516,10 @@ function isNodeElement(node, shapes) {
 
 function isEdgeElement(node) {
   return node.type === "element" && EDGE_TAGS.has(node.name);
+}
+
+function isPathElement(node) {
+  return node.type === "element" && PATH_TAGS.has(node.name);
 }
 
 function isPortElement(node) {
@@ -553,6 +593,7 @@ function assertKnownChildren(element, shapes, options = {}) {
       (options.allowStyle && isStyleElement(child)) ||
       isNodeElement(child, shapes) ||
       isEdgeElement(child) ||
+      isPathElement(child) ||
       isPortElement(child)
     ) {
       continue;
@@ -740,6 +781,13 @@ function offsetPositionAttrs(attrs, name, offset) {
     };
   }
 
+  if (name === "Path" || name === "path") {
+    return {
+      ...attrs,
+      points: offsetPathPoints(attrs.points, offset)
+    };
+  }
+
   return {
     ...attrs,
     x: offsetNumber(attrs.x, offset.x),
@@ -755,6 +803,18 @@ function isPositionableElementName(name) {
     name !== "Shape" &&
     !EDGE_TAGS.has(name)
   );
+}
+
+function offsetPathPoints(points, offset) {
+  if (!Array.isArray(points)) return points;
+  return points.map((point) => {
+    if (!Array.isArray(point)) return point;
+    return [
+      offsetNumber(point[0], offset.x),
+      offsetNumber(point[1], offset.y),
+      ...point.slice(2)
+    ];
+  });
 }
 
 function offsetNumber(value, offset) {
@@ -1073,19 +1133,7 @@ function parseArrayLiteral(source) {
   const inner = source.slice(1, -1).trim();
   if (!inner) return [];
 
-  return inner.split(",").map((part) => {
-    const value = part.trim();
-    if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
-
-    const quoted = value.match(/^(['"])(.*)\1$/);
-    if (quoted) return quoted[2];
-
-    if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value)) {
-      return refLiteral(value);
-    }
-
-    throw new GraphDslError(`Unsupported array item "${value}"`);
-  });
+  return splitTopLevel(inner, ",").map((part) => parseObjectValue(part.trim()));
 }
 
 function parseObjectLiteral(source) {

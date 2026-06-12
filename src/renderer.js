@@ -3,8 +3,9 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 export function renderGraph(svg, graph, options = {}) {
   const nodes = flattenNodes(graph.nodes);
   const edges = flattenEdges(graph);
+  const paths = flattenPaths(graph);
   const legs = indexLegs(nodes);
-  const bounds = getBounds(nodes, edges, legs);
+  const bounds = getBounds(nodes, edges, legs, paths);
   const viewportPadding = Number(options.viewportPadding ?? 80);
   const width = Math.max(options.minWidth ?? 720, bounds.maxX - bounds.minX + viewportPadding * 2);
   const height = Math.max(options.minHeight ?? 520, bounds.maxY - bounds.minY + viewportPadding * 2);
@@ -23,14 +24,19 @@ export function renderGraph(svg, graph, options = {}) {
   svg.append(defs(context));
 
   const edgeLayer = el(context, "g");
+  const pathLayer = el(context, "g");
   const nodeLayer = el(context, "g");
-  svg.append(edgeLayer, nodeLayer);
+  svg.append(edgeLayer, pathLayer, nodeLayer);
 
   for (const edge of edges) {
     const from = legs.get(edge.from);
     const to = legs.get(edge.to);
     if (!from || !to) continue;
     edgeLayer.append(drawEdge(context, resolveEdgeRouting(edge, context.routing), from, to, offsetX, offsetY));
+  }
+
+  for (const path of paths) {
+    pathLayer.append(drawPath(context, path, offsetX, offsetY));
   }
 
   for (const node of graph.nodes) {
@@ -43,10 +49,15 @@ export function renderGraph(svg, graph, options = {}) {
 export function graphSummary(graph) {
   const nodeCount = flattenNodes(graph.nodes).length;
   const edgeCount = flattenEdges(graph).length;
+  const pathCount = flattenPaths(graph).length;
+  const text = pathCount === 0
+    ? `${nodeCount} ${plural(nodeCount, "node")}, ${edgeCount} ${plural(edgeCount, "edge")}`
+    : `${nodeCount} ${plural(nodeCount, "node")}, ${edgeCount} ${plural(edgeCount, "edge")}, ${pathCount} ${plural(pathCount, "path")}`;
   return {
     nodeCount,
     edgeCount,
-    text: `${nodeCount} ${plural(nodeCount, "node")}, ${edgeCount} ${plural(edgeCount, "edge")}`
+    pathCount,
+    text
   };
 }
 
@@ -58,6 +69,13 @@ export function flattenEdges(graph) {
   return [
     ...graph.edges,
     ...graph.nodes.flatMap((node) => collectNodeEdges(node))
+  ];
+}
+
+export function flattenPaths(graph) {
+  return [
+    ...(graph.paths ?? []),
+    ...(graph.nodes ?? []).flatMap((node) => collectNodePaths(node))
   ];
 }
 
@@ -190,6 +208,27 @@ function drawEdge(context, edge, from, to, offsetX, offsetY) {
     markerEnd: "url(#arrow)",
     d: edgePathData(edge, from, to, offsetX, offsetY, context)
   });
+}
+
+function drawPath(context, path, offsetX, offsetY) {
+  return styledEl(context, "path", path.attrs.style, {
+    class: "path",
+    fill: "none",
+    stroke: "#111111",
+    strokeWidth: 2,
+    d: explicitPathData(path, offsetX, offsetY)
+  });
+}
+
+function explicitPathData(path, offsetX, offsetY) {
+  if (Array.isArray(path.points)) {
+    const points = path.points.map((point) => ({
+      x: point.x + offsetX,
+      y: point.y + offsetY
+    }));
+    return routedPathData(path, compactPoints(points));
+  }
+  return path.attrs.d ?? "";
 }
 
 function routingDefaults(attrs) {
@@ -626,6 +665,13 @@ function collectNodeEdges(node) {
   ];
 }
 
+function collectNodePaths(node) {
+  return [
+    ...(node.paths ?? []),
+    ...node.children.flatMap((child) => collectNodePaths(child))
+  ];
+}
+
 function indexLegs(nodes) {
   const legs = new Map();
   for (const node of nodes) {
@@ -636,7 +682,7 @@ function indexLegs(nodes) {
   return legs;
 }
 
-function getBounds(nodes, edges, legs) {
+function getBounds(nodes, edges, legs, paths = []) {
   const points = [];
   for (const node of nodes) {
     const box = nodeBox(node);
@@ -647,6 +693,9 @@ function getBounds(nodes, edges, legs) {
     const to = legs.get(edge.to);
     if (from) points.push(from);
     if (to) points.push(to);
+  }
+  for (const path of paths) {
+    points.push(...pathBoundsPoints(path));
   }
   if (points.length === 0) {
     return { minX: 0, minY: 0, maxX: 640, maxY: 360 };
@@ -662,7 +711,7 @@ function getBounds(nodes, edges, legs) {
 function nodeBox(node) {
   if (node.children.length > 0) {
     const nodes = flattenNodes(node.children);
-    return getBounds(nodes, node.edges, indexLegs(nodes));
+    return getBounds(nodes, node.edges, indexLegs(nodes), node.paths);
   }
   if (node.shape === "point") {
     return {
@@ -695,6 +744,21 @@ function nodeBox(node) {
     cx: node.x + w / 2,
     cy: node.y + h / 2
   };
+}
+
+function pathBoundsPoints(path) {
+  if (Array.isArray(path.points)) {
+    return path.points;
+  }
+  if (typeof path.attrs.d !== "string") {
+    return [];
+  }
+  const numbers = [...path.attrs.d.matchAll(/-?\d+(?:\.\d+)?/g)].map((match) => Number(match[0]));
+  const points = [];
+  for (let index = 0; index + 1 < numbers.length; index += 2) {
+    points.push({ x: numbers[index], y: numbers[index + 1] });
+  }
+  return points;
 }
 
 function el(context, name, attrs = {}, text = null) {

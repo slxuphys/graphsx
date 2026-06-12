@@ -347,6 +347,7 @@ test("summarizes rendered graph model", () => {
   assert.deepEqual(graphSummary(graph), {
     nodeCount: 2,
     edgeCount: 1,
+    pathCount: 0,
     text: "2 nodes, 1 edge"
   });
 });
@@ -515,6 +516,45 @@ test("resolves reusable style tags", () => {
   });
 });
 
+test("parses explicit paths with points", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Style id="wire" stroke="#111111" strokeWidth={2} />
+      <Path id="bus" points={[[10, 20], [10, 80], [120, 80]]} useStyle="wire" corner={4} />
+    </Graph>
+  `);
+
+  assert.equal(graph.paths.length, 1);
+  assert.equal(graph.paths[0].id, "bus");
+  assert.deepEqual(graph.paths[0].points, [
+    { x: 10, y: 20 },
+    { x: 10, y: 80 },
+    { x: 120, y: 80 }
+  ]);
+  assert.deepEqual(graph.paths[0].attrs.style, {
+    stroke: "#111111",
+    strokeWidth: 2
+  });
+  assert.equal(graph.paths[0].attrs.corner, 4);
+});
+
+test("expands repeated paths", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Repeat count={3} as="i" step={[0, 30]}>
+        <Path id={\`wire-\${i}\`} points={[[0, 0], [80, 0]]} />
+      </Repeat>
+    </Graph>
+  `);
+
+  assert.equal(graph.paths.length, 3);
+  assert.equal(graph.paths[2].id, "wire-2");
+  assert.deepEqual(graph.paths[2].points, [
+    { x: 0, y: 60 },
+    { x: 80, y: 60 }
+  ]);
+});
+
 test("rejects unknown reusable styles", () => {
   assert.throws(
     () => parseGraph(`
@@ -663,4 +703,25 @@ test("expands repeats inside custom shapes", () => {
   assert.equal(graph.nodes[0].legs.out.x, graph.nodes[0].children[2].legs.right.x);
   assert.equal(graph.edges[0].from, "R1.out");
   assert.equal(graph.edges[0].to, "R2.in");
+});
+
+test("expands paths inside custom shapes", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="WireBox" groupBox={false}>
+        <Path id="wire" points={[[0, 20], [80, 20]]} />
+        <Rect id="box" at={[20, 0]} size={[40, 40]} />
+        <Port id="left" target="box.left" />
+        <Port id="right" target="box.right" />
+      </Shape>
+      <WireBox id="W" at={[100, 50]} />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].paths.length, 1);
+  assert.equal(graph.nodes[0].paths[0].id, "wire");
+  assert.deepEqual(graph.nodes[0].paths[0].points, [
+    { x: 100, y: 70 },
+    { x: 180, y: 70 }
+  ]);
 });

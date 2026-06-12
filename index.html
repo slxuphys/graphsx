@@ -322,6 +322,12 @@
         stroke-width: 2.5;
       }
 
+      .path {
+        fill: none;
+        stroke: #111111;
+        stroke-width: 2;
+      }
+
       .leg-dot {
         fill: var(--accent-2);
         stroke: #ffffff;
@@ -502,6 +508,15 @@
               <div><code>&lt;Arrow from="A.right" to="B.top" route="orthogonal" /&gt;</code></div>
               <div><code>&lt;Graph route="auto" grid={20} padding={16} corner={8}&gt;</code></div>
             </div>
+          </section>
+          <section class="syntax-section">
+            <h2>Paths</h2>
+            <div class="syntax-grid">
+              <div><code>&lt;Path points={[[90, 80], [90, 240], [180, 240]]} /&gt;</code></div>
+              <div><code>&lt;Path points={[[0, 0], [80, 0]]} corner={6} /&gt;</code></div>
+              <div><code>&lt;Path d="M 90 80 L 180 80" /&gt;</code></div>
+            </div>
+            <div>Use paths for exact wire geometry; use edges for port-to-port connections.</div>
           </section>
           <section class="syntax-section">
             <h2>Layout</h2>

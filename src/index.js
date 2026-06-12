@@ -11,6 +11,7 @@ export {
   graphSummary,
   flattenNodes,
   flattenEdges,
+  flattenPaths,
   edgePathData
 } from "./renderer.js";
 

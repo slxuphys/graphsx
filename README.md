@@ -112,6 +112,19 @@ Set routing defaults on `<Graph>` when most edges should use the same behavior. 
 
 `route="auto"` avoids shape boxes only in this first version. It does not try to avoid crossing other edges yet. `grid` controls routing resolution and `padding` controls clearance around shapes.
 
+Use `<Path>` when you want exact drawn geometry instead of a semantic connection between ports:
+
+```jsx
+<Graph>
+  <Style id="wire" stroke="#111111" strokeWidth={2} />
+
+  <Path points={[[90, 80], [90, 240], [180, 240]]} useStyle="wire" />
+  <Path points={[[120, 80], [170, 80], [170, 160]]} corner={6} />
+</Graph>
+```
+
+`Path` renders without an arrowhead by default. `points` is an array of graph coordinates; `corner` rounds bends. A raw SVG path string is also accepted with `d="M 90 80 L 90 240 L 180 240"`.
+
 ## Layout
 
 Coordinates are optional when a graph layout is enabled. `layout="row"` and `layout="column"` place nodes in source order:
@@ -139,7 +152,7 @@ Coordinates are optional when a graph layout is enabled. `layout="row"` and `lay
 
 This places `A` in the first layer and `B`/`C` in a parallel layer to the right. Explicit coordinates still win, so a node with `at={[x, y]}` is not moved by layout.
 
-Use `style={{ ... }}` for SVG styling on shapes, ports, and edges:
+Use `style={{ ... }}` for SVG styling on shapes, ports, paths, and edges:
 
 ```jsx
 <Style id="blueBox" fill="#eef6ff" stroke="#1d4ed8" strokeWidth={2} />
