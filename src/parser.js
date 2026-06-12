@@ -23,6 +23,8 @@ const SIDE_ANGLES = {
   top: -90,
   bottom: 90
 };
+const REF_LITERAL = "__graphDslRef";
+const TEMPLATE_LITERAL = "__graphDslTemplate";
 
 export class GraphDslError extends Error {
   constructor(message, position = null) {
@@ -122,6 +124,8 @@ function buildNode(nodeElement, shapes, styles, context) {
 }
 
 function buildGroupedNode(instance, shapeElement, shapes, styles) {
+  shapeElement = substituteShapeProps(shapeElement, instance.attrs);
+
   const childContext = {
     x: instance.x,
     y: instance.y,
@@ -610,6 +614,13 @@ function substituteAttrs(attrs, scope) {
 }
 
 function substituteValue(value, scope) {
+  if (isRefLiteral(value)) {
+    return scope.has(value[REF_LITERAL]) ? scope.get(value[REF_LITERAL]) : value;
+  }
+  if (isTemplateLiteral(value)) {
+    const rendered = renderTemplateLiteral(value[TEMPLATE_LITERAL], scope, { strict: false });
+    return rendered.complete ? rendered.value : templateLiteral(rendered.value);
+  }
   if (typeof value === "string") {
     return substituteTemplate(value, scope);
   }
@@ -624,6 +635,51 @@ function substituteValue(value, scope) {
   return value;
 }
 
+function substituteShapeProps(element, attrs) {
+  const scope = new Map(Object.entries(attrs));
+  return substituteElementProps(element, scope);
+}
+
+function substituteElementProps(element, scope) {
+  return {
+    ...element,
+    attrs: substitutePropAttrs(element.attrs, scope),
+    children: element.children.map((child) => {
+      if (child.type !== "element") return child;
+      return substituteElementProps(child, scope);
+    })
+  };
+}
+
+function substitutePropAttrs(attrs, scope) {
+  return Object.fromEntries(Object.entries(attrs).map(([key, value]) => {
+    return [key, substitutePropValue(value, scope)];
+  }));
+}
+
+function substitutePropValue(value, scope) {
+  if (isRefLiteral(value)) {
+    const name = value[REF_LITERAL];
+    if (!scope.has(name)) {
+      throw new GraphDslError(`Unknown shape prop "${name}"`);
+    }
+    return scope.get(name);
+  }
+  if (isTemplateLiteral(value)) {
+    const rendered = renderTemplateLiteral(value[TEMPLATE_LITERAL], scope, { strict: true });
+    return rendered.value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => substitutePropValue(item, scope));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => {
+      return [key, substitutePropValue(item, scope)];
+    }));
+  }
+  return value;
+}
+
 function substituteTemplate(source, scope) {
   return source.replace(/\{([^{}]+)\}/g, (match, expression, offset) => {
     const values = expression.split(",").map((term) => evaluateTemplateTerm(term.trim(), scope));
@@ -632,6 +688,25 @@ function substituteTemplate(source, scope) {
     const replacement = values.join(",");
     return source[offset - 1] === "_" || source[offset - 1] === "^" ? `{${replacement}}` : replacement;
   });
+}
+
+function renderTemplateLiteral(source, scope, options) {
+  const consumed = new Set();
+  let complete = true;
+  const value = source.replace(/\$\{([^{}]+)\}/g, (match, expression) => {
+    const name = expression.trim();
+    if (!scope.has(name)) {
+      if (options.strict) {
+        throw new GraphDslError(`Unknown template variable "${name}"`);
+      }
+      complete = false;
+      return match;
+    }
+    consumed.add(name);
+    return scope.get(name);
+  });
+
+  return { value, consumed, complete };
 }
 
 function evaluateTemplateTerm(term, scope) {
@@ -910,6 +985,9 @@ class MarkupParser {
 
 function parseBraceLiteral(source) {
   const value = source.trim();
+  if (/^`[\s\S]*`$/.test(value)) {
+    return templateLiteral(value.slice(1, -1));
+  }
   if (/^\{.*\}$/.test(value)) {
     return parseObjectLiteral(value);
   }
@@ -924,6 +1002,10 @@ function parseBraceLiteral(source) {
   const quoted = value.match(/^(['"])(.*)\1$/);
   if (quoted) return quoted[2];
 
+  if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value)) {
+    return refLiteral(value);
+  }
+
   throw new GraphDslError(`Unsupported braced literal "{${source}}"`);
 }
 
@@ -937,6 +1019,10 @@ function parseArrayLiteral(source) {
 
     const quoted = value.match(/^(['"])(.*)\1$/);
     if (quoted) return quoted[2];
+
+    if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value)) {
+      return refLiteral(value);
+    }
 
     throw new GraphDslError(`Unsupported array item "${value}"`);
   });
@@ -965,6 +1051,7 @@ function parseObjectKey(source) {
 }
 
 function parseObjectValue(source) {
+  if (/^`[\s\S]*`$/.test(source)) return templateLiteral(source.slice(1, -1));
   if (/^-?\d+(\.\d+)?$/.test(source)) return Number(source);
   if (source === "true") return true;
   if (source === "false") return false;
@@ -975,7 +1062,27 @@ function parseObjectValue(source) {
   const quoted = source.match(/^(['"])(.*)\1$/);
   if (quoted) return quoted[2];
 
+  if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(source)) {
+    return refLiteral(source);
+  }
+
   throw new GraphDslError(`Unsupported object value "${source}"`);
+}
+
+function refLiteral(name) {
+  return { [REF_LITERAL]: name };
+}
+
+function templateLiteral(source) {
+  return { [TEMPLATE_LITERAL]: source };
+}
+
+function isRefLiteral(value) {
+  return value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, REF_LITERAL);
+}
+
+function isTemplateLiteral(value) {
+  return value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, TEMPLATE_LITERAL);
 }
 
 function splitTopLevel(source, delimiter) {

@@ -191,6 +191,24 @@ Grouped shapes are declared with `<Shape>` and can be instantiated by name:
 
 Address paths use IDs. `P1.left` is the child shape named `left` inside the custom shape instance `P1`; `P1.left.in` is the `in` port on that child. Public ports on the custom shape use the shorter form, such as `P1.in`.
 
+Custom shape instances can pass arbitrary props into the shape body. Use a backtick template string when an internal label or attribute should substitute those props:
+
+```jsx
+<Graph>
+  <Shape id="Tensor">
+    <Rect id="box" at={[0, 0]} size={[56, 56]} label={`$A^{[${site}]}$`} />
+    <Port id="left" target="box.left" />
+    <Port id="right" target="box.right" />
+  </Shape>
+
+  <Repeat count={4} as="i" step={[100, 0]}>
+    <Tensor id="A{i}" at={[100, 100]} site={i} />
+  </Repeat>
+</Graph>
+```
+
+Backtick strings use `${name}` for shape prop substitution. Normal quoted strings do not read shape props, though repeat shorthand such as `{i}` still expands as before. Props stay on the grouped shape instance even when children reference them. Use a custom prop such as `boxLabel`, `upperLabel`, or `site` when a value is meant only for internal children.
+
 ## Repeat
 
 Use `<Repeat>` to expand repeated nodes or edges before the graph is built:

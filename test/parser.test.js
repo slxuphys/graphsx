@@ -68,6 +68,41 @@ test("supports grouped shape definitions", () => {
   assert.equal(graph.edges[0].to, "P2.in");
 });
 
+test("passes custom shape props into template labels", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="Tensor">
+        <Rect id="box" at={[0, 0]} size={[56, 56]} label={\`$A^{[\${site}]}$\`} />
+        <Port id="left" target="box.left" />
+        <Port id="right" target="box.right" />
+      </Shape>
+      <Repeat count={2} as="i" step={[100, 0]}>
+        <Tensor id="A{i}" at={[100, 100]} site={i} label="outer {i}" />
+      </Repeat>
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].attrs.label, "outer 0");
+  assert.equal(graph.nodes[0].children[0].attrs.label, "$A^{[0]}$");
+  assert.equal(graph.nodes[1].children[0].attrs.label, "$A^{[1]}$");
+});
+
+test("keeps forwarded props on grouped shape instances", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="Box">
+        <Rect id="body" at={[0, 0]} size={[80, 50]} label={boxLabel} />
+        <Port id="out" target="body.right" />
+      </Shape>
+      <Box id="B" at={[100, 100]} label="outer" boxLabel="$B$" />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].attrs.label, "outer");
+  assert.equal(graph.nodes[0].attrs.boxLabel, "$B$");
+  assert.equal(graph.nodes[0].children[0].attrs.label, "$B$");
+});
+
 test("public target ports inherit target port visuals", () => {
   const graph = parseGraph(`
     <Graph>
