@@ -1,5 +1,7 @@
 import katex from "katex";
 import "katex/dist/katex.min.css";
+import { basicSetup, EditorView } from "codemirror";
+import { javascript } from "@codemirror/lang-javascript";
 import { graphSummary, parseGraph, renderGraph } from "./index.js";
 
 const examples = [
@@ -99,7 +101,7 @@ const examples = [
   }
 ];
 
-const source = document.querySelector("#source");
+const editorHost = document.querySelector("#editor");
 const example = document.querySelector("#example");
 const status = document.querySelector("#status");
 const summary = document.querySelector("#summary");
@@ -118,6 +120,7 @@ let zoom = 1;
 let pan = { x: 0, y: 0 };
 let renderedSize = { width: 720, height: 520 };
 let panStart = null;
+let editor = null;
 
 for (const item of examples) {
   const option = document.createElement("option");
@@ -126,8 +129,19 @@ for (const item of examples) {
   example.append(option);
 }
 
-source.value = examples[0].source;
-source.addEventListener("input", render);
+editor = new EditorView({
+  doc: examples[0].source,
+  extensions: [
+    basicSetup,
+    javascript({ jsx: true }),
+    EditorView.updateListener.of((update) => {
+      if (update.docChanged) {
+        render();
+      }
+    })
+  ],
+  parent: editorHost
+});
 zoomOut.addEventListener("click", () => setZoom(zoom / zoomStep, canvasCenter()));
 zoomIn.addEventListener("click", () => setZoom(zoom * zoomStep, canvasCenter()));
 zoomReset.addEventListener("click", () => {
@@ -172,7 +186,7 @@ canvas.addEventListener("pointercancel", endPan);
 example.addEventListener("change", () => {
   const item = examples.find((candidate) => candidate.name === example.value);
   if (!item) return;
-  source.value = item.source;
+  setEditorText(item.source);
   render();
   fitToView();
 });
@@ -187,7 +201,7 @@ fitToView();
 
 function render() {
   try {
-    const graph = parseGraph(source.value);
+    const graph = parseGraph(editorText());
     renderedSize = renderGraph(svg, graph, { katex });
     applyViewport();
     status.textContent = "Parsed";
@@ -197,6 +211,20 @@ function render() {
     status.textContent = error.message;
     status.classList.add("error");
   }
+}
+
+function editorText() {
+  return editor.state.doc.toString();
+}
+
+function setEditorText(value) {
+  editor.dispatch({
+    changes: {
+      from: 0,
+      to: editor.state.doc.length,
+      insert: value
+    }
+  });
 }
 
 function setZoom(value, focus = null) {
