@@ -33,6 +33,15 @@ renderGraph(document.querySelector("svg"), graph, { katex });
 
 Labels are opt-in. Use `label="xy"` for plain text and `label="$\alpha$"` for KaTeX math. If a node or port has no `label` prop, no label is rendered.
 
+Rectangles use a small rounded corner by default. Set `corner` directly to tune it:
+
+```jsx
+<Rect id="square" at={[100, 100]} size={[120, 70]} corner={0} />
+<Rect id="round" at={[260, 100]} size={[120, 70]} corner={18} />
+```
+
+`rx` is also supported as a lower-level SVG-style alias for rectangle corners.
+
 Ports can use side shorthand or custom local coordinates:
 
 ```jsx
@@ -57,6 +66,21 @@ Built-in `Rect` and `Circle` shapes automatically expose `left`, `right`, `top`,
 
 If you define a port with one of those names yourself, your explicit port overrides the default.
 
+Use `Point` or `Anchor` when you need a connection target without drawing a shape. A point has a default `center` port:
+
+```jsx
+<Rect id="A" at={[100, 100]} size={[120, 80]} />
+<Point id="J" at={[280, 140]} />
+<Anchor id="K" at={[360, 140]}>
+  <Port id="in" angle={180} />
+</Anchor>
+
+<Arrow from="A.right" to="J.center" />
+<Arrow from="J.center" to="K.in" />
+```
+
+Point nodes are not rendered as shape boxes and are not treated as obstacles by `route="auto"`.
+
 Arrows use curved routing by default. Use `route="straight"` for a direct segment, `route="orthogonal"` for right-angle routing, or `route="auto"` for v1 obstacle-avoiding A* routing. Orthogonal and auto routing respect port angles by adding a short first and last segment in the port direction:
 
 ```jsx
@@ -69,20 +93,47 @@ Arrows use curved routing by default. Use `route="straight"` for a direct segmen
 
 For orthogonal and auto routes, custom angles are snapped to the nearest cardinal direction. You can change the first and last segment length with `stub={40}`.
 
-Set routing defaults on `<Graph>` when most edges should use the same behavior:
+Set routing defaults on `<Graph>` when most edges should use the same behavior. For edges, `corner` rounds orthogonal and auto route bends:
 
 ```jsx
-<Graph route="auto" grid={20} padding={16}>
+<Graph route="auto" grid={20} padding={16} corner={8}>
   <Rect id="A" at={[60, 100]} size={[90, 60]} />
   <Rect id="Block" at={[210, 70]} size={[90, 110]} />
   <Rect id="B" at={[380, 100]} size={[90, 60]} />
 
   <Arrow from="A.right" to="B.left" />
-  <Arrow from="A.top" to="B.top" route="curve" />
+  <Arrow from="A.top" to="B.top" route="orthogonal" corner={0} />
 </Graph>
 ```
 
 `route="auto"` avoids shape boxes only in this first version. It does not try to avoid crossing other edges yet. `grid` controls routing resolution and `padding` controls clearance around shapes.
+
+## Layout
+
+Coordinates are optional when a graph layout is enabled. `layout="row"` and `layout="column"` place nodes in source order:
+
+```jsx
+<Graph layout="row" gap={120}>
+  <Rect id="A" size={[100, 60]} />
+  <Rect id="B" size={[100, 60]} />
+  <Arrow from="A.right" to="B.left" />
+</Graph>
+```
+
+`layout="dag"` reads arrows between top-level nodes and places related nodes in layers. With `direction="right"`, layers go left-to-right and siblings stack vertically:
+
+```jsx
+<Graph layout="dag" direction="right" rankGap={200} nodeGap={90}>
+  <Rect id="A" size={[100, 60]} />
+  <Rect id="B" size={[100, 60]} />
+  <Rect id="C" size={[100, 60]} />
+
+  <Arrow from="A.right" to="B.left" />
+  <Arrow from="A.right" to="C.left" />
+</Graph>
+```
+
+This places `A` in the first layer and `B`/`C` in a parallel layer to the right. Explicit coordinates still win, so a node with `at={[x, y]}` is not moved by layout.
 
 Use `style={{ ... }}` for SVG styling on shapes, ports, and edges:
 

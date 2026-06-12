@@ -242,13 +242,16 @@
             <h2>Shapes</h2>
             <div class="syntax-grid">
               <div><code>&lt;Rect at={[x, y]} size={[w, h]} /&gt;</code></div>
+              <div><code>&lt;Rect corner={0} /&gt;</code></div>
               <div><code>&lt;Circle at={[x, y]} r={40} /&gt;</code></div>
+              <div><code>&lt;Point id="J" at={[x, y]} /&gt;</code></div>
             </div>
           </section>
           <section class="syntax-section">
             <h2>Ports</h2>
             <div class="syntax-grid">
               <div><code>A.left</code>, <code>A.right</code>, <code>A.top</code>, <code>A.bottom</code> exist by default</div>
+              <div><code>J.center</code> exists by default on <code>Point</code> and <code>Anchor</code></div>
               <div><code>&lt;Port id="out" right /&gt;</code></div>
               <div><code>&lt;Port id="tap" at={[60, 20]} /&gt;</code></div>
               <div><code>&lt;Port id="tap" at={[60, 20]} angle={35} /&gt;</code></div>
@@ -259,7 +262,15 @@
             <div class="syntax-grid">
               <div><code>&lt;Arrow from="A.out" to="B.in" /&gt;</code></div>
               <div><code>&lt;Arrow from="A.right" to="B.top" route="orthogonal" /&gt;</code></div>
-              <div><code>&lt;Graph route="auto" grid={20} padding={16}&gt;</code></div>
+              <div><code>&lt;Graph route="auto" grid={20} padding={16} corner={8}&gt;</code></div>
+            </div>
+          </section>
+          <section class="syntax-section">
+            <h2>Layout</h2>
+            <div class="syntax-grid">
+              <div><code>&lt;Graph layout="row" gap={120}&gt;</code></div>
+              <div><code>&lt;Graph layout="dag" direction="right"&gt;</code></div>
+              <div>Explicit <code>at={[x, y]}</code> nodes stay fixed.</div>
             </div>
           </section>
           <section class="syntax-section">

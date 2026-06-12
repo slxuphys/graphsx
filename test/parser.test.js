@@ -68,6 +68,33 @@ test("supports grouped shape definitions", () => {
   assert.equal(graph.edges[0].to, "P2.in");
 });
 
+test("public target ports inherit target port visuals", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Style id="hiddenPort" fill="transparent" stroke="transparent" strokeWidth={0} />
+      <Shape id="Tile">
+        <Rect id="box" at={[0, 0]} size={[55, 55]}>
+          <Port id="br" at={[55, 55]} r={0} right useStyle="hiddenPort" label="inner" />
+        </Rect>
+        <Port id="br" target="box.br" label="public" />
+      </Shape>
+      <Tile id="T1" at={[40, 30]} />
+    </Graph>
+  `);
+
+  const port = graph.nodes[0].legs.br;
+  assert.equal(port.x, 95);
+  assert.equal(port.y, 85);
+  assert.equal(port.angle, 0);
+  assert.equal(port.attrs.r, 0);
+  assert.equal(port.attrs.label, "public");
+  assert.deepEqual(port.attrs.style, {
+    fill: "transparent",
+    stroke: "transparent",
+    strokeWidth: 0
+  });
+});
+
 test("rejects generic Node syntax", () => {
   assert.throws(
     () => parseGraph(`<Graph><Node id="A" shape="rect" /></Graph>`),
@@ -104,6 +131,18 @@ test("supports at coordinates for custom port positions", () => {
   assert.equal(graph.nodes[0].legs.tap.y, 120);
 });
 
+test("preserves rectangle corner radius props", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[100, 100]} size={[120, 80]} rx={0} />
+      <Rect id="B" at={[260, 100]} size={[120, 80]} corner={18} />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].attrs.rx, 0);
+  assert.equal(graph.nodes[1].attrs.corner, 18);
+});
+
 test("adds default side ports for built-in shapes", () => {
   const graph = parseGraph(`
     <Graph>
@@ -124,6 +163,29 @@ test("adds default side ports for built-in shapes", () => {
   assert.equal(graph.nodes[1].legs.bottom.angle, 90);
   assert.equal(graph.edges[0].from, "A.right");
   assert.equal(graph.edges[1].to, "B.bottom");
+});
+
+test("supports shapeless point nodes with default center ports", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[100, 100]} size={[120, 80]} />
+      <Point id="J" at={[280, 140]} />
+      <Anchor id="K" at={[360, 140]}>
+        <Port id="in" at={[0, 0]} angle={180} />
+      </Anchor>
+      <Arrow from="A.right" to="J.center" />
+      <Arrow from="J.center" to="K.in" />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[1].shape, "point");
+  assert.equal(graph.nodes[2].shape, "point");
+  assert.deepEqual(graph.nodes[1].legs.center.relative, { x: 0, y: 0 });
+  assert.equal(graph.nodes[1].legs.center.x, 280);
+  assert.equal(graph.nodes[1].legs.center.y, 140);
+  assert.equal(graph.nodes[2].legs.in.angle, 180);
+  assert.equal(graph.edges[0].to, "J.center");
+  assert.equal(graph.edges[1].from, "J.center");
 });
 
 test("supports custom port angles", () => {
@@ -167,6 +229,45 @@ test("preserves graph routing defaults", () => {
   assert.equal(graph.attrs.padding, 16);
 });
 
+test("lays out dag siblings to the right by default", () => {
+  const graph = parseGraph(`
+    <Graph layout="dag" direction="right" x={100} y={100} rankGap={200} nodeGap={90}>
+      <Rect id="A" size={[100, 60]} />
+      <Rect id="B" size={[100, 60]} />
+      <Rect id="C" size={[100, 60]} />
+      <Arrow from="A.right" to="B.left" />
+      <Arrow from="A.right" to="C.left" />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].x, 100);
+  assert.equal(graph.nodes[0].y, 100);
+  assert.equal(graph.nodes[1].x, 300);
+  assert.equal(graph.nodes[1].y, 100);
+  assert.equal(graph.nodes[2].x, 300);
+  assert.equal(graph.nodes[2].y, 190);
+  assert.equal(graph.nodes[0].legs.right.x, 200);
+  assert.equal(graph.nodes[1].legs.left.x, 300);
+});
+
+test("lays out nodes in source order for row layout", () => {
+  const graph = parseGraph(`
+    <Graph layout="row" x={50} y={70} gap={30}>
+      <Rect id="A" size={[100, 60]} />
+      <Rect id="B" at={[500, 500]} size={[80, 40]} />
+      <Rect id="C" size={[60, 40]} />
+      <Arrow from="A.right" to="C.left" />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].x, 50);
+  assert.equal(graph.nodes[0].y, 70);
+  assert.equal(graph.nodes[1].x, 500);
+  assert.equal(graph.nodes[1].y, 500);
+  assert.equal(graph.nodes[2].x, 290);
+  assert.equal(graph.nodes[2].y, 70);
+});
+
 test("summarizes rendered graph model", () => {
   const graph = parseGraph(`
     <Graph>
@@ -191,6 +292,17 @@ test("generates reusable orthogonal edge path data", () => {
   );
 
   assert.equal(path, "M 100 100 L 120 100 L 160 100 L 160 180 L 200 180 L 200 160");
+});
+
+test("rounds orthogonal edge corners", () => {
+  const path = edgePathData(
+    { attrs: { route: "orthogonal", stub: 20, corner: 8 } },
+    { x: 100, y: 100, angle: 0 },
+    { x: 200, y: 160, angle: 90 }
+  );
+
+  assert.match(path, /Q 160 100 160 108/);
+  assert.match(path, /Q 160 180 168 180/);
 });
 
 test("generates obstacle avoiding auto edge path data", () => {
@@ -236,6 +348,28 @@ test("keeps auto edge path segments orthogonal after grid snapping", () => {
       `segment ${index} is diagonal in ${path}`
     );
   }
+});
+
+test("auto route avoids the target shape for same-side ports", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" size={[100, 60]} at={[0, 0]} />
+      <Rect id="B" size={[100, 60]} at={[200, 0]} style={{ opacity: 0.5 }} />
+      <Edge from="A.right" to="B.right" route="auto" grid={20} padding={20} />
+    </Graph>
+  `);
+  const edge = graph.edges[0];
+  const from = graph.nodes[0].legs.right;
+  const to = graph.nodes[1].legs.right;
+  const path = edgePathData(edge, from, to, 0, 0, { nodes: graph.nodes });
+  const points = path.match(/[ML] -?\d+(?:\.\d+)? -?\d+(?:\.\d+)?/g).map((command) => {
+    const [, x, y] = command.split(" ");
+    return { x: Number(x), y: Number(y) };
+  });
+
+  assert.notEqual(path, "M 100 30 L 300 30");
+  assert.match(path, /L 332 30 L 300 30$/);
+  assert.ok(points.some((point) => point.y < -20 || point.y > 80), path);
 });
 
 test("explicit side ports override default side ports", () => {

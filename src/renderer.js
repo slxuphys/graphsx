@@ -69,10 +69,10 @@ export function edgePathData(edge, from, to, offsetX = 0, offsetY = 0, routingCo
     ]);
   }
   if (route === "orthogonal") {
-    return pathData(orthogonalPoints(edge, from, to, offsetX, offsetY));
+    return routedPathData(edge, orthogonalPoints(edge, from, to, offsetX, offsetY));
   }
   if (route === "auto") {
-    return pathData(autoRoutePoints(edge, from, to, offsetX, offsetY, routingContext));
+    return routedPathData(edge, autoRoutePoints(edge, from, to, offsetX, offsetY, routingContext));
   }
 
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
@@ -95,7 +95,7 @@ function drawNodeTree(context, node, offsetX, offsetY) {
     return group;
   }
 
-  group.append(drawShape(context, node, offsetX, offsetY));
+  appendMaybe(group, drawShape(context, node, offsetX, offsetY));
   appendMaybe(group, drawNodeLabel(context, node, offsetX, offsetY));
   for (const leg of Object.values(node.legs)) {
     appendMaybe(group, drawLeg(context, leg, offsetX, offsetY));
@@ -104,6 +104,10 @@ function drawNodeTree(context, node, offsetX, offsetY) {
 }
 
 function drawShape(context, node, offsetX, offsetY) {
+  if (node.shape === "point") {
+    return null;
+  }
+
   if (node.shape === "circle") {
     const r = Number(node.attrs.r ?? 28);
     return styledEl(context, "circle", node.attrs.style, {
@@ -120,7 +124,7 @@ function drawShape(context, node, offsetX, offsetY) {
     y: node.y + offsetY,
     width: Number(node.attrs.w ?? 100),
     height: Number(node.attrs.h ?? 60),
-    rx: 6
+    rx: Number(node.attrs.corner ?? node.attrs.rx ?? 6)
   });
 }
 
@@ -186,6 +190,7 @@ function routingDefaults(attrs) {
     grid: attrs.grid,
     padding: attrs.padding,
     stub: attrs.stub,
+    corner: attrs.corner,
     ...routing
   };
 }
@@ -287,10 +292,10 @@ function orthogonalBridge(from, to, firstDirection) {
 
 function obstacleBoxes(nodes, edge, offsetX, offsetY, padding) {
   const sourceNode = nodeAddress(edge.from);
-  const targetNode = nodeAddress(edge.to);
   return nodes
     .filter((node) => node.children.length === 0)
-    .filter((node) => !isEndpointNode(node.id, sourceNode) && !isEndpointNode(node.id, targetNode))
+    .filter((node) => node.shape !== "point")
+    .filter((node) => !isEndpointNode(node.id, sourceNode))
     .map((node) => {
       const box = nodeBox(node);
       return {
@@ -489,6 +494,60 @@ function pathData(points) {
   }).join(" ");
 }
 
+function routedPathData(edge, points) {
+  const corner = Number(edge.attrs.corner ?? 0);
+  if (corner <= 0) {
+    return pathData(points);
+  }
+  return roundedPathData(points, corner);
+}
+
+function roundedPathData(points, radius) {
+  if (points.length <= 2) {
+    return pathData(points);
+  }
+
+  const commands = [`M ${points[0].x} ${points[0].y}`];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const point = points[index];
+    const next = points[index + 1];
+    const inLength = distance(previous, point);
+    const outLength = distance(point, next);
+    const amount = Math.min(radius, inLength / 2, outLength / 2);
+
+    if (amount <= 0 || isCollinear(previous, point, next)) {
+      commands.push(`L ${point.x} ${point.y}`);
+      continue;
+    }
+
+    const before = moveToward(point, previous, amount);
+    const after = moveToward(point, next, amount);
+    commands.push(`L ${before.x} ${before.y}`);
+    commands.push(`Q ${point.x} ${point.y} ${after.x} ${after.y}`);
+  }
+  const last = points[points.length - 1];
+  commands.push(`L ${last.x} ${last.y}`);
+  return commands.join(" ");
+}
+
+function distance(a, b) {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function moveToward(from, to, amount) {
+  const length = distance(from, to);
+  if (length === 0) return from;
+  return {
+    x: from.x + (to.x - from.x) / length * amount,
+    y: from.y + (to.y - from.y) / length * amount
+  };
+}
+
+function isCollinear(a, b, c) {
+  return (a.x === b.x && b.x === c.x) || (a.y === b.y && b.y === c.y);
+}
+
 function compactPoints(points) {
   return points.filter((point, index) => {
     if (index === 0) return true;
@@ -595,6 +654,16 @@ function nodeBox(node) {
   if (node.children.length > 0) {
     const nodes = flattenNodes(node.children);
     return getBounds(nodes, node.edges, indexLegs(nodes));
+  }
+  if (node.shape === "point") {
+    return {
+      minX: node.x,
+      minY: node.y,
+      maxX: node.x,
+      maxY: node.y,
+      cx: node.x,
+      cy: node.y
+    };
   }
   if (node.shape === "circle") {
     const r = Number(node.attrs.r ?? 28);

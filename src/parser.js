@@ -6,7 +6,11 @@ const BUILTIN_SHAPE_TAGS = new Map([
   ["Circle", "circle"],
   ["circle", "circle"],
   ["Circ", "circle"],
-  ["circ", "circle"]
+  ["circ", "circle"],
+  ["Point", "point"],
+  ["point", "point"],
+  ["Anchor", "point"],
+  ["anchor", "point"]
 ]);
 const EDGE_TAGS = new Set(["Edge", "Arrow", "Link"]);
 const PORT_TAGS = new Set(["Port", "Leg"]);
@@ -80,6 +84,7 @@ export function buildGraphModel(graphElement) {
     edges
   };
 
+  applyLayout(graph);
   resolveGraphAddresses(graph);
   return graph;
 }
@@ -87,6 +92,7 @@ export function buildGraphModel(graphElement) {
 function buildNode(nodeElement, shapes, styles, context) {
   const normalized = normalizeNodeElement(nodeElement, shapes, styles);
   const id = requiredAttr(nodeElement, "id");
+  const positioned = hasExplicitPosition(nodeElement.attrs);
   const x = coordinateAttr(normalized.attrs, "x", 0) + context.x;
   const y = coordinateAttr(normalized.attrs, "y", 0) + context.y;
   const base = {
@@ -95,6 +101,7 @@ function buildNode(nodeElement, shapes, styles, context) {
     shape: normalized.shape,
     x,
     y,
+    positioned,
     attrs: normalized.attrs,
     legs: {},
     children: [],
@@ -158,6 +165,22 @@ function buildLeg(legElement, node, styles) {
 }
 
 function addDefaultPorts(node) {
+  if (node.shape === "point") {
+    if (!node.legs.center) {
+      node.legs.center = {
+        id: "center",
+        side: null,
+        angle: 0,
+        x: node.x,
+        y: node.y,
+        relative: { x: 0, y: 0 },
+        auto: true,
+        attrs: { id: "center" }
+      };
+    }
+    return;
+  }
+
   if (node.shape !== "rect" && node.shape !== "circle") return;
 
   for (const side of SIDE_ATTRS) {
@@ -179,6 +202,10 @@ function addDefaultPorts(node) {
 function resolveLegPosition(node, side, explicitX, explicitY) {
   if (explicitX != null || explicitY != null) {
     return { x: explicitX ?? 0, y: explicitY ?? 0 };
+  }
+
+  if (node.shape === "point") {
+    return { x: 0, y: 0 };
   }
 
   if (node.shape === "circle") {
@@ -220,6 +247,129 @@ function prefixGroupedEdge(edge, namespace) {
   };
 }
 
+function applyLayout(graph) {
+  const layout = graph.attrs.layout;
+  if (!layout || layout === "manual") return;
+
+  if (layout === "row" || layout === "column") {
+    applyFlowLayout(graph, layout);
+    return;
+  }
+
+  if (layout === "dag" || layout === "auto") {
+    applyDagLayout(graph);
+  }
+}
+
+function applyFlowLayout(graph, layout) {
+  const gap = numberFromAttrs(graph.attrs, "gap", 120);
+  const originX = numberFromAttrs(graph.attrs, "x", 100);
+  const originY = numberFromAttrs(graph.attrs, "y", 100);
+  let cursor = 0;
+
+  for (const node of graph.nodes) {
+    if (!node.positioned) {
+      moveNodeTo(node, layout === "row" ? originX + cursor : originX, layout === "column" ? originY + cursor : originY);
+    }
+    const size = nodeSize(node);
+    cursor += (layout === "row" ? size.w : size.h) + gap;
+  }
+}
+
+function applyDagLayout(graph) {
+  const direction = graph.attrs.direction ?? "right";
+  const rankGap = numberFromAttrs(graph.attrs, "rankGap", numberFromAttrs(graph.attrs, "gap", 180));
+  const nodeGap = numberFromAttrs(graph.attrs, "nodeGap", 90);
+  const originX = numberFromAttrs(graph.attrs, "x", 100);
+  const originY = numberFromAttrs(graph.attrs, "y", 100);
+  const order = new Map(graph.nodes.map((node, index) => [node.id, index]));
+  const ids = new Set(graph.nodes.map((node) => node.id));
+  const outgoing = new Map([...ids].map((id) => [id, []]));
+  const indegree = new Map([...ids].map((id) => [id, 0]));
+
+  for (const edge of graph.edges) {
+    const from = rootAddress(edge.from);
+    const to = rootAddress(edge.to);
+    if (!ids.has(from) || !ids.has(to) || from === to) continue;
+    outgoing.get(from).push(to);
+    indegree.set(to, indegree.get(to) + 1);
+  }
+
+  const queue = [...ids]
+    .filter((id) => indegree.get(id) === 0)
+    .sort((a, b) => order.get(a) - order.get(b));
+  const layer = new Map([...ids].map((id) => [id, 0]));
+
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const id = queue[cursor];
+    for (const next of outgoing.get(id)) {
+      layer.set(next, Math.max(layer.get(next), layer.get(id) + 1));
+      indegree.set(next, indegree.get(next) - 1);
+      if (indegree.get(next) === 0) {
+        queue.push(next);
+      }
+    }
+  }
+
+  const layers = new Map();
+  for (const node of graph.nodes) {
+    const rank = layer.get(node.id) ?? 0;
+    if (!layers.has(rank)) layers.set(rank, []);
+    layers.get(rank).push(node);
+  }
+
+  for (const [rank, nodes] of layers) {
+    nodes.sort((a, b) => order.get(a.id) - order.get(b.id));
+    nodes.forEach((node, index) => {
+      if (node.positioned) return;
+      const point = orientedPoint(direction, originX, originY, rank * rankGap, index * nodeGap);
+      moveNodeTo(node, point.x, point.y);
+    });
+  }
+}
+
+function orientedPoint(direction, originX, originY, main, cross) {
+  if (direction === "left") return { x: originX - main, y: originY + cross };
+  if (direction === "down") return { x: originX + cross, y: originY + main };
+  if (direction === "up") return { x: originX + cross, y: originY - main };
+  return { x: originX + main, y: originY + cross };
+}
+
+function moveNodeTo(node, x, y) {
+  moveNodeBy(node, x - node.x, y - node.y);
+}
+
+function moveNodeBy(node, dx, dy) {
+  node.x += dx;
+  node.y += dy;
+  for (const leg of Object.values(node.legs)) {
+    leg.x += dx;
+    leg.y += dy;
+  }
+  for (const child of node.children) {
+    moveNodeBy(child, dx, dy);
+  }
+}
+
+function nodeSize(node) {
+  if (node.shape === "point") {
+    return { w: 0, h: 0 };
+  }
+
+  if (node.shape === "circle") {
+    const r = numberFromAttrs(node.attrs, "r", 28);
+    return { w: r * 2, h: r * 2 };
+  }
+  return {
+    w: numberFromAttrs(node.attrs, "w", 100),
+    h: numberFromAttrs(node.attrs, "h", 60)
+  };
+}
+
+function rootAddress(address) {
+  return String(address).split(".")[0];
+}
+
 function resolveGraphAddresses(graph) {
   const ports = indexPorts(graph.nodes);
 
@@ -232,10 +382,15 @@ function resolveGraphAddresses(graph) {
       }
       leg.x = target.x;
       leg.y = target.y;
+      leg.side = leg.side ?? target.side;
+      if (leg.attrs.angle == null && leg.attrs.side == null && !SIDE_ATTRS.some((side) => leg.attrs[side] === true)) {
+        leg.angle = target.angle;
+      }
       leg.relative = {
         x: target.x - node.x,
         y: target.y - node.y
       };
+      leg.attrs = inheritTargetPortAttrs(target.attrs, leg.attrs, leg.id);
     }
   }
 
@@ -253,6 +408,21 @@ function indexPorts(nodes) {
     }
   }
   return ports;
+}
+
+function inheritTargetPortAttrs(targetAttrs, publicAttrs, publicId) {
+  const attrs = {
+    ...targetAttrs,
+    ...publicAttrs,
+    id: publicId
+  };
+  if (targetAttrs.style || publicAttrs.style) {
+    attrs.style = {
+      ...(targetAttrs.style ?? {}),
+      ...(publicAttrs.style ?? {})
+    };
+  }
+  return attrs;
 }
 
 function flattenNodes(nodes) {
@@ -338,6 +508,10 @@ function normalizeNodeElement(nodeElement, shapes, styles) {
   }
 
   return { shape, attrs };
+}
+
+function hasExplicitPosition(attrs) {
+  return Array.isArray(attrs.at) || attrs.x != null || attrs.y != null;
 }
 
 function coordinateAttr(attrs, name, fallback) {
@@ -546,6 +720,16 @@ function requiredAttr(element, name) {
 
 function numberAttr(element, name, fallback) {
   const value = element.attrs[name];
+  if (value == null) return fallback;
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    throw new GraphDslError(`"${name}" must be a number`);
+  }
+  return number;
+}
+
+function numberFromAttrs(attrs, name, fallback) {
+  const value = attrs[name];
   if (value == null) return fallback;
   const number = Number(value);
   if (!Number.isFinite(number)) {
