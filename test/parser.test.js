@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { edgePathData, graphSummary, parseGraph, parseGraphs } from "../src/index.js";
 
+function closeTo(actual, expected, message = undefined) {
+  assert.ok(Math.abs(actual - expected) < 1e-6, message ?? `${actual} should be close to ${expected}`);
+}
+
 test("parses nodes, legs, and edges", () => {
   const graph = parseGraph(`
     <Graph>
@@ -807,4 +811,66 @@ test("rejects non-arithmetic expressions", () => {
     `),
     /Unknown template variable "Math"|Unsupported expression/
   );
+});
+
+test("rotates custom shape contents and ports around the instance origin", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="EPR" groupBox={false}>
+        <Path d={\`M 0 0 L 0 20 L \${L} 20 L \${L} 0\`} />
+        <Circle id="C" at={[L / 2, 20]} r={5} />
+        <Port id="tap" target="C.top" />
+      </Shape>
+
+      <EPR id="P" at={[200, 10]} L={100} rotate={180} />
+    </Graph>
+  `);
+
+  const instance = graph.nodes[0];
+  const circle = instance.children[0];
+  closeTo(circle.legs.top.x, 150);
+  closeTo(circle.legs.top.y, -5);
+  closeTo(circle.legs.top.angle, 90);
+  closeTo(instance.legs.tap.x, circle.legs.top.x);
+  closeTo(instance.legs.tap.y, circle.legs.top.y);
+  closeTo(instance.legs.tap.angle, 90);
+  assert.ok(circle.transform);
+  assert.ok(instance.paths[0].transform);
+});
+
+test("flips custom shape ports with their emitted angles", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="Box" groupBox={false}>
+        <Rect id="body" at={[10, 0]} size={[20, 10]} />
+        <Port id="out" target="body.right" />
+      </Shape>
+
+      <Box id="B" at={[100, 100]} flipX />
+    </Graph>
+  `);
+
+  const body = graph.nodes[0].children[0];
+  closeTo(body.legs.right.x, 70);
+  closeTo(body.legs.right.y, 105);
+  closeTo(body.legs.right.angle, 180);
+  closeTo(graph.nodes[0].legs.out.x, 70);
+  closeTo(graph.nodes[0].legs.out.y, 105);
+});
+
+test("rotates built-in node ports around the node center by default", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[100, 100]} size={[80, 40]} rotate={90} />
+    </Graph>
+  `);
+
+  const rect = graph.nodes[0];
+  closeTo(rect.legs.right.x, 140);
+  closeTo(rect.legs.right.y, 160);
+  closeTo(rect.legs.right.angle, 90);
+  closeTo(rect.legs.top.x, 160);
+  closeTo(rect.legs.top.y, 120);
+  closeTo(rect.legs.top.angle, 0);
+  assert.ok(rect.transform);
 });

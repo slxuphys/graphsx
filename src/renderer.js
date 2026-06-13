@@ -135,23 +135,26 @@ function drawShape(context, node, offsetX, offsetY) {
     return null;
   }
 
+  const transform = node.transform ? viewportMatrixAttr(node.transform, offsetX, offsetY) : null;
   if (node.shape === "circle") {
     const r = Number(node.attrs.r ?? 28);
     return styledEl(context, "circle", node.attrs.style, {
       class: "shape",
-      cx: node.x + offsetX,
-      cy: node.y + offsetY,
-      r
+      cx: node.transform ? node.x : node.x + offsetX,
+      cy: node.transform ? node.y : node.y + offsetY,
+      r,
+      ...(transform ? { transform } : {})
     });
   }
 
   return styledEl(context, "rect", node.attrs.style, {
     class: "shape",
-    x: node.x + offsetX,
-    y: node.y + offsetY,
+    x: node.transform ? node.x : node.x + offsetX,
+    y: node.transform ? node.y : node.y + offsetY,
     width: Number(node.attrs.w ?? 100),
     height: Number(node.attrs.h ?? 60),
-    rx: Number(node.attrs.corner ?? node.attrs.rx ?? 6)
+    rx: Number(node.attrs.corner ?? node.attrs.rx ?? 6),
+    ...(transform ? { transform } : {})
   });
 }
 
@@ -218,8 +221,12 @@ function drawPath(context, path, offsetX, offsetY) {
     strokeWidth: 2,
     d: explicitPathData(path, offsetX, offsetY)
   };
-  if (!Array.isArray(path.points) && (path.x || path.y)) {
-    attrs.transform = `translate(${path.x + offsetX} ${path.y + offsetY})`;
+  if (!Array.isArray(path.points)) {
+    if (path.transform) {
+      attrs.transform = `${viewportMatrixAttr(path.transform, offsetX, offsetY)} translate(${path.x ?? 0} ${path.y ?? 0})`;
+    } else if (path.x || path.y) {
+      attrs.transform = `translate(${path.x + offsetX} ${path.y + offsetY})`;
+    }
   }
   return styledEl(context, "path", path.attrs.style, attrs);
 }
@@ -718,7 +725,10 @@ function nodeBox(node) {
     return getBounds(nodes, node.edges, indexLegs(nodes), node.paths);
   }
   if (node.shape === "point") {
-    return {
+    return transformedBox(node.transform, [{
+      x: node.x,
+      y: node.y
+    }]) ?? {
       minX: node.x,
       minY: node.y,
       maxX: node.x,
@@ -729,17 +739,25 @@ function nodeBox(node) {
   }
   if (node.shape === "circle") {
     const r = Number(node.attrs.r ?? 28);
+    const center = node.transform ? transformPoint(node.transform, node) : node;
     return {
-      minX: node.x - r,
-      minY: node.y - r,
-      maxX: node.x + r,
-      maxY: node.y + r,
-      cx: node.x,
-      cy: node.y
+      minX: center.x - r,
+      minY: center.y - r,
+      maxX: center.x + r,
+      maxY: center.y + r,
+      cx: center.x,
+      cy: center.y
     };
   }
   const w = Number(node.attrs.w ?? 100);
   const h = Number(node.attrs.h ?? 60);
+  const transformed = transformedBox(node.transform, [
+    { x: node.x, y: node.y },
+    { x: node.x + w, y: node.y },
+    { x: node.x + w, y: node.y + h },
+    { x: node.x, y: node.y + h }
+  ]);
+  if (transformed) return transformed;
   return {
     minX: node.x,
     minY: node.y,
@@ -760,12 +778,52 @@ function pathBoundsPoints(path) {
   const numbers = [...path.attrs.d.matchAll(/-?\d+(?:\.\d+)?/g)].map((match) => Number(match[0]));
   const points = [];
   for (let index = 0; index + 1 < numbers.length; index += 2) {
-    points.push({
+    const point = {
       x: numbers[index] + (path.x ?? 0),
       y: numbers[index + 1] + (path.y ?? 0)
-    });
+    };
+    points.push(path.transform ? transformPoint(path.transform, point) : point);
   }
   return points;
+}
+
+function viewportMatrixAttr(matrix, offsetX, offsetY) {
+  const adjusted = {
+    ...matrix,
+    e: matrix.e + offsetX,
+    f: matrix.f + offsetY
+  };
+  return matrixAttr(adjusted);
+}
+
+function matrixAttr(matrix) {
+  return `matrix(${formatNumber(matrix.a)} ${formatNumber(matrix.b)} ${formatNumber(matrix.c)} ${formatNumber(matrix.d)} ${formatNumber(matrix.e)} ${formatNumber(matrix.f)})`;
+}
+
+function transformPoint(matrix, point) {
+  return {
+    x: matrix.a * point.x + matrix.c * point.y + matrix.e,
+    y: matrix.b * point.x + matrix.d * point.y + matrix.f
+  };
+}
+
+function transformedBox(matrix, points) {
+  if (!matrix) return null;
+  const transformed = points.map((point) => transformPoint(matrix, point));
+  const xs = transformed.map((point) => point.x);
+  const ys = transformed.map((point) => point.y);
+  return {
+    minX: Math.min(...xs),
+    minY: Math.min(...ys),
+    maxX: Math.max(...xs),
+    maxY: Math.max(...ys),
+    cx: (Math.min(...xs) + Math.max(...xs)) / 2,
+    cy: (Math.min(...ys) + Math.max(...ys)) / 2
+  };
+}
+
+function formatNumber(value) {
+  return Number(value.toFixed(6));
 }
 
 function el(context, name, attrs = {}, text = null) {

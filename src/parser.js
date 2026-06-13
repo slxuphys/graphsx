@@ -91,6 +91,7 @@ export function buildGraphModel(graphElement) {
   };
 
   applyLayout(graph);
+  applyTransforms(graph);
   resolveGraphAddresses(graph);
   return graph;
 }
@@ -391,6 +392,235 @@ function moveNodeBy(node, dx, dy) {
   for (const child of node.children) {
     moveNodeBy(child, dx, dy);
   }
+  for (const path of node.paths ?? []) {
+    movePathBy(path, dx, dy);
+  }
+  if (node.transform) {
+    node.transform.e += dx;
+    node.transform.f += dy;
+  }
+}
+
+function movePathBy(path, dx, dy) {
+  if (Array.isArray(path.points)) {
+    for (const point of path.points) {
+      point.x += dx;
+      point.y += dy;
+    }
+    return;
+  }
+  path.x = (path.x ?? 0) + dx;
+  path.y = (path.y ?? 0) + dy;
+}
+
+function applyTransforms(graph) {
+  for (const node of graph.nodes) {
+    applyNodeTransforms(node);
+  }
+  for (const path of graph.paths ?? []) {
+    applyPathOwnTransform(path);
+  }
+}
+
+function applyNodeTransforms(node) {
+  for (const child of node.children) {
+    applyNodeTransforms(child);
+  }
+  for (const path of node.paths ?? []) {
+    applyPathOwnTransform(path);
+  }
+
+  const matrix = nodeTransformMatrix(node);
+  if (!matrix) return;
+
+  if (node.children.length > 0 || (node.paths?.length ?? 0) > 0) {
+    transformNodeContents(node, matrix);
+  } else {
+    node.transform = composeMatrix(matrix, node.transform);
+    transformNodeLegs(node, matrix);
+  }
+}
+
+function transformNodeContents(node, matrix) {
+  for (const child of node.children) {
+    transformNodeTree(child, matrix);
+  }
+  for (const path of node.paths ?? []) {
+    transformPath(path, matrix);
+  }
+  transformNodeLegs(node, matrix);
+}
+
+function transformNodeTree(node, matrix) {
+  node.transform = composeMatrix(matrix, node.transform);
+  transformNodeLegs(node, matrix);
+  for (const path of node.paths ?? []) {
+    transformPath(path, matrix);
+  }
+  for (const child of node.children) {
+    transformNodeTree(child, matrix);
+  }
+}
+
+function transformNodeLegs(node, matrix) {
+  for (const leg of Object.values(node.legs)) {
+    const point = transformPoint(matrix, leg);
+    leg.x = point.x;
+    leg.y = point.y;
+    leg.angle = transformAngle(matrix, leg.angle ?? 0);
+    leg.relative = {
+      x: leg.x - node.x,
+      y: leg.y - node.y
+    };
+  }
+}
+
+function applyPathOwnTransform(path) {
+  const matrix = attrsTransformMatrix(path.attrs, pathOrigin(path));
+  if (matrix) {
+    transformPath(path, matrix);
+  }
+}
+
+function transformPath(path, matrix) {
+  if (Array.isArray(path.points)) {
+    path.points = path.points.map((point) => transformPoint(matrix, point));
+    return;
+  }
+  path.transform = composeMatrix(matrix, path.transform);
+}
+
+function nodeTransformMatrix(node) {
+  return attrsTransformMatrix(node.attrs, nodeTransformOrigin(node));
+}
+
+function attrsTransformMatrix(attrs, origin) {
+  const rotate = attrs.rotate ?? attrs.rotation;
+  const hasRotate = rotate != null && Number(rotate) !== 0;
+  const hasFlipX = booleanAttr(attrs.flipX ?? attrs.flipx, false);
+  const hasFlipY = booleanAttr(attrs.flipY ?? attrs.flipy, false);
+  if (!hasRotate && !hasFlipX && !hasFlipY) return null;
+
+  const angle = rotate == null ? 0 : Number(rotate);
+  if (!Number.isFinite(angle)) {
+    throw new GraphDslError("\"rotate\" must be a number");
+  }
+  return transformMatrix(origin.x, origin.y, angle, hasFlipX, hasFlipY);
+}
+
+function nodeTransformOrigin(node) {
+  if (Array.isArray(node.attrs.origin)) {
+    return {
+      x: node.x + (optionalNumber(node.attrs.origin[0]) ?? 0),
+      y: node.y + (optionalNumber(node.attrs.origin[1]) ?? 0)
+    };
+  }
+
+  if (node.children.length > 0 || (node.paths?.length ?? 0) > 0) {
+    return { x: node.x, y: node.y };
+  }
+
+  const box = untransformedNodeBox(node);
+  return { x: box.cx, y: box.cy };
+}
+
+function pathOrigin(path) {
+  if (Array.isArray(path.attrs.origin)) {
+    return {
+      x: (path.x ?? 0) + (optionalNumber(path.attrs.origin[0]) ?? 0),
+      y: (path.y ?? 0) + (optionalNumber(path.attrs.origin[1]) ?? 0)
+    };
+  }
+  return { x: path.x ?? 0, y: path.y ?? 0 };
+}
+
+function transformMatrix(ox, oy, rotate, flipX, flipY) {
+  const radians = rotate * Math.PI / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const sx = flipX ? -1 : 1;
+  const sy = flipY ? -1 : 1;
+  const a = cos * sx;
+  const b = sin * sx;
+  const c = -sin * sy;
+  const d = cos * sy;
+  return {
+    a,
+    b,
+    c,
+    d,
+    e: ox - a * ox - c * oy,
+    f: oy - b * ox - d * oy
+  };
+}
+
+function composeMatrix(outer, inner) {
+  if (!inner) return { ...outer };
+  return {
+    a: outer.a * inner.a + outer.c * inner.b,
+    b: outer.b * inner.a + outer.d * inner.b,
+    c: outer.a * inner.c + outer.c * inner.d,
+    d: outer.b * inner.c + outer.d * inner.d,
+    e: outer.a * inner.e + outer.c * inner.f + outer.e,
+    f: outer.b * inner.e + outer.d * inner.f + outer.f
+  };
+}
+
+function transformPoint(matrix, point) {
+  return {
+    x: matrix.a * point.x + matrix.c * point.y + matrix.e,
+    y: matrix.b * point.x + matrix.d * point.y + matrix.f
+  };
+}
+
+function transformAngle(matrix, angle) {
+  const radians = Number(angle) * Math.PI / 180;
+  const x = Math.cos(radians);
+  const y = Math.sin(radians);
+  const tx = matrix.a * x + matrix.c * y;
+  const ty = matrix.b * x + matrix.d * y;
+  return normalizeAngle(Math.atan2(ty, tx) * 180 / Math.PI);
+}
+
+function normalizeAngle(angle) {
+  const normalized = ((angle % 360) + 360) % 360;
+  return Math.abs(normalized - 360) < 1e-9 ? 0 : normalized;
+}
+
+function untransformedNodeBox(node) {
+  if (node.shape === "point") {
+    return {
+      minX: node.x,
+      minY: node.y,
+      maxX: node.x,
+      maxY: node.y,
+      cx: node.x,
+      cy: node.y
+    };
+  }
+
+  if (node.shape === "circle") {
+    const r = numberFromAttrs(node.attrs, "r", 28);
+    return {
+      minX: node.x - r,
+      minY: node.y - r,
+      maxX: node.x + r,
+      maxY: node.y + r,
+      cx: node.x,
+      cy: node.y
+    };
+  }
+
+  const w = numberFromAttrs(node.attrs, "w", 100);
+  const h = numberFromAttrs(node.attrs, "h", 60);
+  return {
+    minX: node.x,
+    minY: node.y,
+    maxX: node.x + w,
+    maxY: node.y + h,
+    cx: node.x + w / 2,
+    cy: node.y + h / 2
+  };
 }
 
 function nodeSize(node) {
@@ -897,6 +1127,13 @@ function optionalNumber(value) {
     throw new GraphDslError("Leg coordinates must be numbers");
   }
   return number;
+}
+
+function booleanAttr(value, fallback) {
+  if (value == null) return fallback;
+  if (value === false || value === "false") return false;
+  if (value === true || value === "true") return true;
+  return Boolean(value);
 }
 
 class MarkupParser {
