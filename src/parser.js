@@ -255,6 +255,8 @@ function buildPath(pathElement, styles, context) {
   const attrs = resolveStyledAttrs(pathElement.attrs, styles);
   return {
     id: attrs.id ?? null,
+    x: attrs.points == null ? context.x : 0,
+    y: attrs.points == null ? context.y : 0,
     points: normalizePathPoints(attrs.points, context),
     attrs
   };

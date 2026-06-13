@@ -390,7 +390,7 @@ const canvas = document.querySelector(".canvas-wrap");
 const markdownPreview = document.querySelector("#markdownPreview");
 const renderTitle = document.querySelector("#renderTitle");
 const zoomControls = document.querySelector(".zoom-controls");
-const modeHint = document.querySelector("#modeHint");
+const syntaxToggle = document.querySelector("#syntaxToggle");
 const zoomOut = document.querySelector("#zoomOut");
 const zoomIn = document.querySelector("#zoomIn");
 const zoomReset = document.querySelector("#zoomReset");
@@ -409,6 +409,7 @@ let panStart = null;
 let editor = null;
 let applyingEditorChange = false;
 let currentMode = loadStoredValue("mode", "graph");
+let syntaxCollapsed = loadStoredValue("syntaxCollapsed", "false") === "true";
 const modeContent = {
   graph: loadStoredValue("content:graph", loadDraft("graph", graphExamples[0].source)),
   markdown: loadStoredValue("content:markdown", loadDraft("markdown", markdownExamples[0].source))
@@ -422,6 +423,7 @@ if (!modes[currentMode]) {
   currentMode = "graph";
 }
 mode.value = currentMode;
+applySyntaxPaneState();
 
 populateExamples();
 
@@ -457,6 +459,16 @@ zoomReset.addEventListener("click", () => {
   applyViewport();
 });
 zoomFit.addEventListener("click", fitToView);
+syntaxToggle.addEventListener("click", () => {
+  syntaxCollapsed = !syntaxCollapsed;
+  storeValue("syntaxCollapsed", String(syntaxCollapsed));
+  applySyntaxPaneState();
+  requestAnimationFrame(() => {
+    if (currentMode === "graph") {
+      fitToView();
+    }
+  });
+});
 canvas.addEventListener("wheel", (event) => {
   if (currentMode !== "graph") return;
   if (!event.ctrlKey && !event.metaKey) return;
@@ -568,11 +580,10 @@ function renderGraphMode() {
     markdownPreview.hidden = true;
     zoomControls.hidden = false;
     renderTitle.textContent = modes.graph.title;
-    modeHint.textContent = "Live parse";
     const graph = parseGraph(editorText());
     renderedSize = renderGraph(svg, graph, { katex });
     applyViewport();
-    status.textContent = "Parsed";
+    status.textContent = "Parsed successfully";
     status.classList.remove("error");
     summary.textContent = graphSummary(graph).text;
   } catch (error) {
@@ -592,10 +603,9 @@ function renderMarkdownMode() {
     markdownPreview.hidden = false;
     zoomControls.hidden = true;
     renderTitle.textContent = modes.markdown.title;
-    modeHint.textContent = "Markdown source with side preview";
     markdownPreview.innerHTML = md.render(editorText());
     renderGraphSXBlocks(markdownPreview, { katex });
-    status.textContent = "Rendered Markdown";
+    status.textContent = "Markdown preview rendered";
     status.classList.remove("error");
     summary.textContent = `${markdownPreview.querySelectorAll(".graphsx-block svg").length} GraphSX block(s)`;
   } catch (error) {
@@ -615,9 +625,8 @@ function renderLiveMarkdownMode() {
     markdownPreview.hidden = true;
     zoomControls.hidden = true;
     renderTitle.textContent = modes.liveMarkdown.title;
-    modeHint.textContent = "Markdown with in-place GraphSX widgets";
     const count = findGraphSXFences(editorText()).filter((block) => block.info.name === GRAPHSX_FENCE).length;
-    status.textContent = "Rendered in editor";
+    status.textContent = "Live preview rendered in editor";
     status.classList.remove("error");
     summary.textContent = `${count} GraphSX widget(s)`;
   } catch (error) {
@@ -681,6 +690,13 @@ function applyViewport() {
   svg.style.height = `${renderedSize.height}px`;
   svg.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
   zoomValue.textContent = `${Math.round(zoom * 100)}%`;
+}
+
+function applySyntaxPaneState() {
+  app.classList.toggle("syntax-collapsed", syntaxCollapsed);
+  syntaxToggle.setAttribute("aria-expanded", String(!syntaxCollapsed));
+  syntaxToggle.setAttribute("aria-pressed", String(!syntaxCollapsed));
+  syntaxToggle.textContent = syntaxCollapsed ? "Syntax" : "Hide Syntax";
 }
 
 function populateExamples() {

@@ -103,7 +103,7 @@ export function edgePathData(edge, from, to, offsetX = 0, offsetY = 0, routingCo
 
 function drawNodeTree(context, node, offsetX, offsetY) {
   const group = el(context, "g");
-  if (node.children.length > 0) {
+  if (node.children.length > 0 || (node.paths?.length ?? 0) > 0) {
     if (showsGroupBox(node)) {
       group.append(drawGroupBox(context, node, offsetX, offsetY));
     } else {
@@ -211,13 +211,17 @@ function drawEdge(context, edge, from, to, offsetX, offsetY) {
 }
 
 function drawPath(context, path, offsetX, offsetY) {
-  return styledEl(context, "path", path.attrs.style, {
+  const attrs = {
     class: "path",
     fill: "none",
     stroke: "#111111",
     strokeWidth: 2,
     d: explicitPathData(path, offsetX, offsetY)
-  });
+  };
+  if (!Array.isArray(path.points) && (path.x || path.y)) {
+    attrs.transform = `translate(${path.x + offsetX} ${path.y + offsetY})`;
+  }
+  return styledEl(context, "path", path.attrs.style, attrs);
 }
 
 function explicitPathData(path, offsetX, offsetY) {
@@ -756,7 +760,10 @@ function pathBoundsPoints(path) {
   const numbers = [...path.attrs.d.matchAll(/-?\d+(?:\.\d+)?/g)].map((match) => Number(match[0]));
   const points = [];
   for (let index = 0; index + 1 < numbers.length; index += 2) {
-    points.push({ x: numbers[index], y: numbers[index + 1] });
+    points.push({
+      x: numbers[index] + (path.x ?? 0),
+      y: numbers[index + 1] + (path.y ?? 0)
+    });
   }
   return points;
 }

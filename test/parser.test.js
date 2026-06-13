@@ -725,3 +725,38 @@ test("expands paths inside custom shapes", () => {
     { x: 180, y: 70 }
   ]);
 });
+
+test("offsets raw path data inside custom shapes", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="EPR" groupBox={false}>
+        <Path d="M 0 0 L 0 20 L 100 20 L 100 0" />
+      </Shape>
+
+      <EPR id="P1" at={[10, 10]} />
+      <EPR id="P2" at={[200, 10]} />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].paths[0].attrs.d, "M 0 0 L 0 20 L 100 20 L 100 0");
+  assert.equal(graph.nodes[0].paths[0].x, 10);
+  assert.equal(graph.nodes[0].paths[0].y, 10);
+  assert.equal(graph.nodes[1].paths[0].x, 200);
+  assert.equal(graph.nodes[1].paths[0].y, 10);
+});
+
+test("substitutes custom shape props in braced backtick path data", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="EPR" groupBox={false}>
+        <Path d={\`M 0 0 L 0 20 L \${L} 20 L \${L} 0\`} />
+      </Shape>
+
+      <EPR id="P1" at={[10, 10]} L={100} />
+      <EPR id="P2" at={[200, 10]} L={200} />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].paths[0].attrs.d, "M 0 0 L 0 20 L 100 20 L 100 0");
+  assert.equal(graph.nodes[1].paths[0].attrs.d, "M 0 0 L 0 20 L 200 20 L 200 0");
+});

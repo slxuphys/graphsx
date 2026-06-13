@@ -40,15 +40,93 @@
 
       .app {
         display: grid;
-        grid-template-columns: 280px minmax(320px, 0.9fr) minmax(420px, 1.1fr);
-        gap: 1px;
+        grid-template-rows: auto minmax(0, 1fr);
         height: 100dvh;
+        overflow: hidden;
+        background: var(--bg);
+      }
+
+      .app-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        min-height: 58px;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--line);
+        background: #ffffff;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .brand-mark {
+        display: grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border: 1px solid #b8c8bf;
+        border-radius: 8px;
+        color: #ffffff;
+        background: #1f342f;
+        font: 800 13px/1 ui-sans-serif, system-ui, sans-serif;
+      }
+
+      .brand-copy {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .brand-title {
+        margin: 0;
+        color: var(--ink);
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .brand-subtitle {
+        color: var(--muted);
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: 292px minmax(330px, 0.92fr) minmax(430px, 1.08fr);
+        gap: 1px;
+        min-height: 0;
         overflow: hidden;
         background: var(--line);
       }
 
-      .app.live-preview-mode {
-        grid-template-columns: 280px minmax(0, 1fr);
+      .app.syntax-collapsed .workspace {
+        grid-template-columns: minmax(360px, 0.92fr) minmax(430px, 1.08fr);
+      }
+
+      .app.syntax-collapsed .syntax-pane {
+        display: none;
+      }
+
+      .app.live-preview-mode .workspace {
+        grid-template-columns: 292px minmax(0, 1fr);
+      }
+
+      .app.live-preview-mode.syntax-collapsed .workspace {
+        grid-template-columns: minmax(0, 1fr);
       }
 
       .app.live-preview-mode .render-pane {
@@ -106,19 +184,27 @@
       .icon-button {
         display: inline-grid;
         place-items: center;
-        width: 32px;
+        min-width: 32px;
         height: 32px;
         border: 1px solid var(--line);
         border-radius: 6px;
+        padding: 0 9px;
         color: var(--ink);
         background: #fbfcfa;
-        font: 700 15px/1 ui-sans-serif, system-ui, sans-serif;
+        font: 700 13px/1 ui-sans-serif, system-ui, sans-serif;
         cursor: pointer;
+        text-decoration: none;
       }
 
       .icon-button:hover {
         border-color: #b7c1bb;
         background: #ffffff;
+      }
+
+      .icon-button[aria-pressed="true"] {
+        border-color: #8fb0a2;
+        color: #12352c;
+        background: #edf6f2;
       }
 
       .zoom-controls,
@@ -132,14 +218,28 @@
         margin-left: auto;
       }
 
+      .zoom-controls .icon-button {
+        min-width: 42px;
+        height: 34px;
+        padding: 0 10px;
+        font: 700 13px/1 ui-sans-serif, system-ui, sans-serif;
+      }
+
+      .zoom-controls #zoomOut,
+      .zoom-controls #zoomIn {
+        min-width: 38px;
+        font-size: 17px;
+        font-weight: 650;
+      }
+
       .mode-controls {
         flex-wrap: wrap;
       }
 
       .zoom-value {
-        min-width: 48px;
+        min-width: 52px;
         color: var(--muted);
-        font-size: 12px;
+        font: 500 13px/1 ui-sans-serif, system-ui, sans-serif;
         text-align: center;
       }
 
@@ -460,13 +560,38 @@
 
       @media (max-width: 860px) {
         .app {
+          grid-template-rows: auto minmax(0, 1fr);
+        }
+
+        .app-header {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 10px;
+        }
+
+        .header-actions {
+          width: 100%;
+          justify-content: space-between;
+        }
+
+        .workspace,
+        .app.syntax-collapsed .workspace,
+        .app.live-preview-mode .workspace,
+        .app.live-preview-mode.syntax-collapsed .workspace {
           grid-template-columns: 1fr;
+        }
+
+        .workspace {
           grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
         }
 
-        .app.live-preview-mode {
-          grid-template-columns: 1fr;
-          grid-template-rows: auto minmax(0, 1fr);
+        .app.syntax-collapsed .workspace,
+        .app.live-preview-mode .workspace {
+          grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+        }
+
+        .app.live-preview-mode.syntax-collapsed .workspace {
+          grid-template-rows: minmax(0, 1fr);
         }
 
         .syntax-pane {
@@ -477,7 +602,22 @@
   </head>
   <body>
     <main class="app">
-      <aside class="pane syntax-pane" aria-label="Syntax reference">
+      <header class="app-header">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">SX</div>
+          <div class="brand-copy">
+            <div class="brand-title">GraphSX Playground</div>
+            <div class="brand-subtitle">GraphSX, Markdown fences, and live editor widgets</div>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="icon-button" id="syntaxToggle" type="button" aria-controls="syntaxPane" aria-expanded="true" aria-pressed="true" title="Toggle syntax reference">Syntax</button>
+          <a class="icon-button" href="https://github.com/slxuphys/graphsx" target="_blank" rel="noreferrer" title="Open repository">Repo</a>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <aside class="pane syntax-pane" id="syntaxPane" aria-label="Syntax reference">
         <div class="toolbar">
           <h1>Syntax</h1>
         </div>
@@ -575,7 +715,7 @@
       <section class="pane editor-pane" aria-label="Graph input">
         <div class="toolbar">
           <div class="toolbar-title">
-            <h1>GraphSX</h1>
+            <h1>Editor</h1>
             <div class="mode-controls" aria-label="Editor controls">
               <select id="mode" aria-label="Editor mode">
                 <option value="graph">GraphSX</option>
@@ -585,12 +725,10 @@
               <select id="example" aria-label="Load example"></select>
             </div>
           </div>
-          <div id="status" class="status">Ready</div>
         </div>
         <div id="editor" class="editor-host"></div>
         <div class="footer">
-          <span id="modeHint">Live parse</span>
-          <span>Nodes, legs, edges, grouped shapes</span>
+          <span id="status" class="status">Ready</span>
         </div>
       </section>
 
@@ -611,6 +749,7 @@
           <svg id="graph" role="img" aria-label="Rendered graph canvas"></svg>
         </div>
       </section>
+      </div>
     </main>
 
     <script type="module" src="/src/playground.js"></script>
