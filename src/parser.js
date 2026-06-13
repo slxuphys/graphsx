@@ -26,6 +26,7 @@ const SIDE_ANGLES = {
 };
 const REF_LITERAL = "__graphDslRef";
 const TEMPLATE_LITERAL = "__graphDslTemplate";
+const EXPRESSION_LITERAL = "__graphDslExpression";
 
 export class GraphDslError extends Error {
   constructor(message, position = null) {
@@ -660,6 +661,10 @@ function substituteValue(value, scope) {
   if (isRefLiteral(value)) {
     return scope.has(value[REF_LITERAL]) ? scope.get(value[REF_LITERAL]) : value;
   }
+  if (isExpressionLiteral(value)) {
+    const result = evaluateExpression(value[EXPRESSION_LITERAL], scope, { strict: false });
+    return result.resolved ? result.value : value;
+  }
   if (isTemplateLiteral(value)) {
     const rendered = renderTemplateLiteral(value[TEMPLATE_LITERAL], scope, { strict: false });
     return rendered.complete ? rendered.value : templateLiteral(rendered.value);
@@ -708,6 +713,9 @@ function substitutePropValue(value, scope) {
     }
     return scope.get(name);
   }
+  if (isExpressionLiteral(value)) {
+    return evaluateExpression(value[EXPRESSION_LITERAL], scope, { strict: true }).value;
+  }
   if (isTemplateLiteral(value)) {
     const rendered = renderTemplateLiteral(value[TEMPLATE_LITERAL], scope, { strict: true });
     return rendered.value;
@@ -737,7 +745,7 @@ function renderTemplateLiteral(source, scope, options) {
   const consumed = new Set();
   let complete = true;
   const value = source.replace(/\$\{([^{}]+)\}/g, (match, expression) => {
-    const result = evaluateTemplateTerm(expression.trim(), scope);
+    const result = evaluateTemplateTerm(expression.trim(), scope, options);
     if (!result.resolved) {
       if (options.strict) {
         throw new GraphDslError(`Unknown template variable "${expression.trim()}"`);
@@ -752,19 +760,17 @@ function renderTemplateLiteral(source, scope, options) {
   return { value, consumed, complete };
 }
 
-function evaluateTemplateTerm(term, scope) {
-  const match = term.match(/^([A-Za-z_][A-Za-z0-9_]*)([+-]\d+)?$/);
-  if (!match || !scope.has(match[1])) return { resolved: false };
-  const [, name, offset] = match;
-  const value = scope.get(name);
-  if (offset == null) {
-    return { resolved: true, name, value };
-  }
-  const number = Number(value);
-  if (!Number.isFinite(number)) {
+function evaluateTemplateTerm(term, scope, options = {}) {
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(term)) {
+    if (scope.has(term)) {
+      return { resolved: true, value: scope.get(term) };
+    }
+    if (options.strict) {
+      throw new GraphDslError(`Unknown template variable "${term}"`);
+    }
     return { resolved: false };
   }
-  return { resolved: true, name, value: number + Number(offset) };
+  return evaluateExpression(term, scope, options);
 }
 
 function offsetPositionAttrs(attrs, name, offset) {
@@ -1124,6 +1130,10 @@ function parseBraceLiteral(source) {
   const quoted = value.match(/^(['"])(.*)\1$/);
   if (quoted) return quoted[2];
 
+  if (looksLikeExpression(value)) {
+    return expressionLiteral(value);
+  }
+
   if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(value)) {
     return refLiteral(value);
   }
@@ -1172,11 +1182,161 @@ function parseObjectValue(source) {
   const quoted = source.match(/^(['"])(.*)\1$/);
   if (quoted) return quoted[2];
 
+  if (looksLikeExpression(source)) {
+    return expressionLiteral(source);
+  }
+
   if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(source)) {
     return refLiteral(source);
   }
 
   throw new GraphDslError(`Unsupported object value "${source}"`);
+}
+
+function evaluateExpression(source, scope, options = {}) {
+  const parser = new ExpressionParser(source, scope, options);
+  return parser.parse();
+}
+
+class ExpressionParser {
+  constructor(source, scope, options) {
+    this.source = source;
+    this.scope = scope;
+    this.options = options;
+    this.index = 0;
+    this.complete = true;
+  }
+
+  parse() {
+    const value = this.parseExpression();
+    this.skipWhitespace();
+    if (!this.isDone()) {
+      throw new GraphDslError(`Unsupported expression "${this.source}"`);
+    }
+    if (!this.complete) {
+      return { resolved: false };
+    }
+    if (!Number.isFinite(value)) {
+      throw new GraphDslError(`Expression "${this.source}" did not evaluate to a finite number`);
+    }
+    return { resolved: true, value };
+  }
+
+  parseExpression() {
+    let value = this.parseTerm();
+    while (true) {
+      this.skipWhitespace();
+      if (this.consume("+")) {
+        value += this.parseTerm();
+      } else if (this.consume("-")) {
+        value -= this.parseTerm();
+      } else {
+        return value;
+      }
+    }
+  }
+
+  parseTerm() {
+    let value = this.parseFactor();
+    while (true) {
+      this.skipWhitespace();
+      if (this.consume("*")) {
+        value *= this.parseFactor();
+      } else if (this.consume("/")) {
+        value /= this.parseFactor();
+      } else {
+        return value;
+      }
+    }
+  }
+
+  parseFactor() {
+    this.skipWhitespace();
+    if (this.consume("+")) return this.parseFactor();
+    if (this.consume("-")) return -this.parseFactor();
+    if (this.consume("(")) {
+      const value = this.parseExpression();
+      this.skipWhitespace();
+      if (!this.consume(")")) {
+        throw new GraphDslError(`Unclosed expression "${this.source}"`);
+      }
+      return value;
+    }
+    if (isDigit(this.peek()) || this.peek() === ".") {
+      return this.parseNumber();
+    }
+    if (isIdentifierStart(this.peek())) {
+      return this.parseIdentifier();
+    }
+    throw new GraphDslError(`Unsupported expression "${this.source}"`);
+  }
+
+  parseNumber() {
+    const start = this.index;
+    while (isDigit(this.peek())) this.index += 1;
+    if (this.peek() === ".") {
+      this.index += 1;
+      while (isDigit(this.peek())) this.index += 1;
+    }
+    const raw = this.source.slice(start, this.index);
+    if (raw === ".") {
+      throw new GraphDslError(`Unsupported expression "${this.source}"`);
+    }
+    return Number(raw);
+  }
+
+  parseIdentifier() {
+    const start = this.index;
+    this.index += 1;
+    while (isIdentifierPart(this.peek())) this.index += 1;
+    const name = this.source.slice(start, this.index);
+    if (!this.scope.has(name)) {
+      if (this.options.strict) {
+        throw new GraphDslError(`Unknown template variable "${name}"`);
+      }
+      this.complete = false;
+      return 0;
+    }
+    const value = Number(this.scope.get(name));
+    if (!Number.isFinite(value)) {
+      if (this.options.strict) {
+        throw new GraphDslError(`Expression variable "${name}" must be a number`);
+      }
+      this.complete = false;
+      return 0;
+    }
+    return value;
+  }
+
+  skipWhitespace() {
+    while (/\s/.test(this.peek() ?? "")) this.index += 1;
+  }
+
+  consume(value) {
+    if (!this.source.startsWith(value, this.index)) return false;
+    this.index += value.length;
+    return true;
+  }
+
+  peek() {
+    return this.source[this.index];
+  }
+
+  isDone() {
+    return this.index >= this.source.length;
+  }
+}
+
+function isDigit(char) {
+  return char != null && /[0-9]/.test(char);
+}
+
+function isIdentifierStart(char) {
+  return char != null && /[A-Za-z_]/.test(char);
+}
+
+function isIdentifierPart(char) {
+  return char != null && /[A-Za-z0-9_]/.test(char);
 }
 
 function refLiteral(name) {
@@ -1187,12 +1347,24 @@ function templateLiteral(source) {
   return { [TEMPLATE_LITERAL]: source };
 }
 
+function expressionLiteral(source) {
+  return { [EXPRESSION_LITERAL]: source };
+}
+
 function isRefLiteral(value) {
   return value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, REF_LITERAL);
 }
 
 function isTemplateLiteral(value) {
   return value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, TEMPLATE_LITERAL);
+}
+
+function isExpressionLiteral(value) {
+  return value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, EXPRESSION_LITERAL);
+}
+
+function looksLikeExpression(source) {
+  return /[+\-*/()]/.test(source);
 }
 
 function splitTopLevel(source, delimiter) {

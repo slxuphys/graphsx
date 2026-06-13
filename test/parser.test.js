@@ -760,3 +760,51 @@ test("substitutes custom shape props in braced backtick path data", () => {
   assert.equal(graph.nodes[0].paths[0].attrs.d, "M 0 0 L 0 20 L 100 20 L 100 0");
   assert.equal(graph.nodes[1].paths[0].attrs.d, "M 0 0 L 0 20 L 200 20 L 200 0");
 });
+
+test("evaluates arithmetic expressions in custom shape props", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="EPR" groupBox={false}>
+        <Path d={\`M 0 0 L 0 20 L \${L} 20 L \${L} 0\`} />
+        <Circle id="C" at={[L / 2, 20]} r={5} />
+      </Shape>
+
+      <EPR id="P1" at={[10, 10]} L={100} />
+      <EPR id="P2" at={[200, 10]} L={200} />
+      <Edge from="P1.C.top" to="P2.C.top" route="auto" />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].children[0].x, 60);
+  assert.equal(graph.nodes[0].children[0].y, 30);
+  assert.equal(graph.nodes[1].children[0].x, 300);
+  assert.equal(graph.nodes[1].children[0].y, 30);
+  assert.equal(graph.edges[0].from, "P1.C.top");
+});
+
+test("evaluates arithmetic expressions in repeat scopes", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Repeat count={3} as="i">
+        <Point id={\`P\${i}\`} at={[i * 40 + 10, (i + 1) * 5]} />
+      </Repeat>
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[2].x, 90);
+  assert.equal(graph.nodes[2].y, 15);
+});
+
+test("rejects non-arithmetic expressions", () => {
+  assert.throws(
+    () => parseGraph(`
+      <Graph>
+        <Shape id="Bad">
+          <Circle id="C" at={[Math.random(), 20]} r={5} />
+        </Shape>
+        <Bad id="B" />
+      </Graph>
+    `),
+    /Unknown template variable "Math"|Unsupported expression/
+  );
+});
