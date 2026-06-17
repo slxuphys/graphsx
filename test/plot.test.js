@@ -40,8 +40,8 @@ test("keeps graph and plot top levels separate", () => {
   );
 
   assert.throws(
-    () => parsePlot(`<Plot><Rect id="A" /></Plot>`),
-    /Unknown tag <Rect> in <Plot>/
+    () => parsePlot(`<Plot><Shape id="A" /></Plot>`),
+    /Unknown tag <Shape> in <Plot>/
   );
 });
 
@@ -700,6 +700,76 @@ test("renders plot math labels with katex", () => {
 
   assert.deepEqual(rendered, ["x_i", "\\alpha"]);
   assert.equal(calls.filter((node) => node.tag === "foreignObject").length, 2);
+});
+
+test("renders plot annotation shapes, links, and paths", () => {
+  const plot = parsePlot(`
+    <Plot width={400} height={260} padding={50} xDomain={[0, 4]} yDomain={[0, 8]} box>
+      <Line points={[[0, 0], [4, 8]]} />
+      <Circle id="peak" at={[2, 4]} r={5} fill="#ef4444" />
+      <Rect id="note" at={[2.5, 6]} size={[70, 26]} label="peak" corner={4}>
+        <Port id="tip" left />
+      </Rect>
+      <Anchor id="screen" at={[320, 70]} atUnit="screen" />
+      <Link from="note.tip" to="peak.top" headArrow arrowSize={8} stroke="#2563eb" />
+      <Path points={[[0, 1], [1, 2], [2, 2]]} corner={4} headArrow stroke="#16a34a" />
+      <Path points={[[300, 210], [340, 210]]} atUnit="screen" tailArrow />
+    </Plot>
+  `);
+  const calls = [];
+  const documentRef = {
+    createElementNS(_namespace, tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    }
+  };
+  const svg = createMockNode("svg");
+  svg.ownerDocument = documentRef;
+
+  renderPlot(svg, plot, { document: documentRef });
+
+  const annotationLayer = calls.find((node) => node.tag === "g" && node.attrs.class === "plot-annotations");
+  const circle = calls.find((node) => node.tag === "circle" && node.attrs.class === "plot-annotation-shape");
+  const rect = calls.find((node) => node.tag === "rect" && node.attrs.class === "plot-annotation-shape");
+  const link = calls.find((node) => node.tag === "path" && node.attrs.class === "plot-annotation-link");
+  const paths = calls.filter((node) => node.tag === "path" && node.attrs.class === "plot-annotation-path");
+
+  assert.equal(plot.annotations.nodes.length, 3);
+  assert.equal(plot.annotations.links.length, 1);
+  assert.equal(plot.annotations.paths.length, 2);
+  assert.ok(annotationLayer);
+  assert.equal(circle.attrs.cx, "200");
+  assert.equal(circle.attrs.cy, "130");
+  assert.equal(rect.attrs.x, "237.5");
+  assert.equal(rect.attrs.y, "90");
+  assert.match(link.attrs["marker-end"], /^url\(#graphsx-plot-arrow-\d+-head-8\)$/);
+  assert.match(paths[0].attrs["marker-end"], /^url\(#graphsx-plot-arrow-\d+-head\)$/);
+  assert.match(paths[1].attrs["marker-start"], /^url\(#graphsx-plot-arrow-\d+-tail\)$/);
+  assert.ok(paths[1].attrs.d.startsWith("M 300 210"));
+  assert.ok(calls.some((node) => node.tag === "marker" && /^graphsx-plot-arrow-\d+-head-8$/.test(node.attrs.id)));
+});
+
+test("validates plot annotation links", () => {
+  assert.throws(
+    () => parsePlot(`
+      <Plot>
+        <Rect id="note" at={[0, 0]} />
+        <Link from="note.left" to="missing.top" />
+      </Plot>
+    `),
+    /Unknown annotation port "missing.top"/
+  );
+
+  assert.throws(
+    () => parsePlot(`
+      <Plot>
+        <Rect id="A" at={[0, 0]} />
+        <Rect id="A" at={[1, 1]} />
+      </Plot>
+    `),
+    /Duplicate annotation id "A"/
+  );
 });
 
 function createMockNode(tag) {

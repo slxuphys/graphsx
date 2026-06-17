@@ -114,6 +114,34 @@ const graphExamples = [
 
   <Link headArrow from="P0.out" to="P1.in" />
 </Graph>`
+  },
+  {
+    name: "Plot Annotation",
+    source: `<Plot width={620} height={380} padding={[58, 64, 64, 70]} xDomain={[0, 5]} yDomain={[0, 10]} box>
+  <Data id="fit" points={[[0, 1], [1, 2], [2, 4], [3, 7], [4, 8], [5, 9]]} />
+
+  <Axis x label="$x$" ticks grid />
+  <Axis y label="$f(x)$" ticks grid />
+
+  <Line data="fit" stroke="#2563eb" strokeWidth={2} />
+
+  <Circle id="peak" at={[3, 7]} r={5} fill="#ef4444" />
+  <Rect
+    id="note"
+    at={[3.35, 8.2]}
+    size={[92, 30]}
+    label="peak"
+    corner={5}
+    fill="#ffffff"
+    stroke="#111111"
+  >
+    <Port id="tip" left />
+  </Rect>
+
+  <Link from="note.tip" to="peak.top" headArrow arrowSize={8} stroke="#111111" />
+  <Path points={[[0.5, 8.8], [1.2, 8.8], [1.2, 7.6]]} corner={6} headArrow stroke="#16a34a" strokeWidth={2} />
+  <Rect id="screenNote" at={[430, 86]} atUnit="screen" size={[106, 28]} label="screen pos" fill="#f8fafc" stroke="#64748b" />
+</Plot>`
   }
 ];
 

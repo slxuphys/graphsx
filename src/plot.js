@@ -11,6 +11,17 @@ const LINE_TAGS = new Set(["Line"]);
 const POINT_TAGS = new Set(["Point", "Mark", "Scatter"]);
 const TEXT_TAGS = new Set(["Text", "Label"]);
 const LEGEND_TAGS = new Set(["Legend", "legend"]);
+const ANNOTATION_NODE_TAGS = new Set(["Rect", "rect", "Circle", "circle", "Anchor", "anchor"]);
+const ANNOTATION_LINK_TAGS = new Set(["Link"]);
+const ANNOTATION_PATH_TAGS = new Set(["Path", "path"]);
+const PORT_TAGS = new Set(["Port"]);
+const SIDE_ATTRS = ["left", "right", "top", "bottom"];
+const SIDE_ANGLES = {
+  left: 180,
+  right: 0,
+  top: -90,
+  bottom: 90
+};
 const STYLE_ATTRS = new Set([
   "fill",
   "fillOpacity",
@@ -60,6 +71,7 @@ export function buildPlotModel(plotElement) {
   const marks = plotElement.children.filter((child) => POINT_TAGS.has(child.name)).map((child) => buildMark(child, styles, dataRecords));
   const labels = plotElement.children.filter((child) => TEXT_TAGS.has(child.name)).map((child) => buildText(child, styles));
   const legends = plotElement.children.filter((child) => LEGEND_TAGS.has(child.name)).map((child) => buildLegend(child, styles));
+  const annotations = buildAnnotations(plotElement, styles);
 
   return {
     type: "plot",
@@ -72,7 +84,8 @@ export function buildPlotModel(plotElement) {
     lines,
     marks,
     labels,
-    legends
+    legends,
+    annotations
   };
 }
 
@@ -199,6 +212,196 @@ function buildLegend(legendElement, styles) {
     id: legendElement.attrs.id,
     attrs: resolveStyledAttrs(legendElement.attrs, styles)
   };
+}
+
+function buildAnnotations(plotElement, styles) {
+  const nodes = plotElement.children
+    .filter((child) => ANNOTATION_NODE_TAGS.has(child.name))
+    .map((child) => buildAnnotationNode(child, styles));
+  assertUniqueAnnotationIds(nodes);
+  const ports = new Set(nodes.flatMap((node) => Object.keys(node.ports).map((portId) => `${node.id}.${portId}`)));
+  const links = plotElement.children
+    .filter((child) => ANNOTATION_LINK_TAGS.has(child.name))
+    .map((child) => buildAnnotationLink(child, styles, ports));
+  const paths = plotElement.children
+    .filter((child) => ANNOTATION_PATH_TAGS.has(child.name))
+    .map((child) => buildAnnotationPath(child, styles));
+  return { nodes, links, paths };
+}
+
+function buildAnnotationNode(nodeElement, styles) {
+  assertKnownAnnotationChildren(nodeElement);
+  const id = requiredAttr(nodeElement, "id");
+  const shape = annotationShape(nodeElement.name);
+  const attrs = normalizeAnnotationNodeAttrs(resolveStyledAttrs(nodeElement.attrs, styles), nodeElement.name);
+  const node = {
+    id,
+    shape,
+    at: annotationPointAttr(nodeElement, "at", [0, 0]),
+    atUnit: coordinateUnit(attrs.atUnit ?? attrs.atunit ?? attrs.unit),
+    attrs,
+    ports: {}
+  };
+
+  for (const portElement of nodeElement.children.filter((child) => PORT_TAGS.has(child.name))) {
+    const port = buildAnnotationPort(portElement, node, styles);
+    if (node.ports[port.id]) {
+      throw new GraphDslError(`Duplicate port id "${port.id}" on "${id}"`);
+    }
+    node.ports[port.id] = port;
+  }
+  addDefaultAnnotationPorts(node);
+  return node;
+}
+
+function annotationShape(name) {
+  if (name === "Circle" || name === "circle") return "circle";
+  if (name === "Anchor" || name === "anchor") return "anchor";
+  return "rect";
+}
+
+function normalizeAnnotationNodeAttrs(attrs, elementName) {
+  const normalized = { ...attrs };
+  if (Array.isArray(normalized.size)) {
+    normalized.w = numberValue(normalized.size[0], `<${elementName}> size width`);
+    normalized.h = numberValue(normalized.size[1], `<${elementName}> size height`);
+  }
+  if (normalized.w != null) normalized.w = numberValue(normalized.w, `<${elementName}> w`);
+  if (normalized.h != null) normalized.h = numberValue(normalized.h, `<${elementName}> h`);
+  if (normalized.r != null) normalized.r = numberValue(normalized.r, `<${elementName}> r`);
+  if (normalized.corner != null) normalized.corner = numberValue(normalized.corner, `<${elementName}> corner`);
+  return normalized;
+}
+
+function buildAnnotationPort(portElement, node, styles) {
+  const id = requiredAttr(portElement, "id");
+  const attrs = resolveStyledAttrs(portElement.attrs, styles);
+  const side = resolvePortSide(attrs);
+  const position = Array.isArray(attrs.at)
+    ? annotationPoint(attrs.at, `<Port> at`)
+    : defaultAnnotationPortPosition(node, side);
+  return {
+    id,
+    side,
+    angle: attrs.angle == null ? (SIDE_ANGLES[side] ?? 0) : numberValue(attrs.angle, `<Port> angle`),
+    x: position.x,
+    y: position.y,
+    attrs
+  };
+}
+
+function addDefaultAnnotationPorts(node) {
+  if (node.shape === "anchor") {
+    if (!node.ports.center) {
+      node.ports.center = {
+        id: "center",
+        side: null,
+        angle: 0,
+        x: 0,
+        y: 0,
+        auto: true,
+        attrs: { id: "center" }
+      };
+    }
+    return;
+  }
+
+  for (const side of SIDE_ATTRS) {
+    if (node.ports[side]) continue;
+    const point = defaultAnnotationPortPosition(node, side);
+    node.ports[side] = {
+      id: side,
+      side,
+      angle: SIDE_ANGLES[side],
+      x: point.x,
+      y: point.y,
+      auto: true,
+      attrs: { id: side, [side]: true }
+    };
+  }
+}
+
+function defaultAnnotationPortPosition(node, side) {
+  if (node.shape === "circle") {
+    const r = Number(node.attrs.r ?? 5);
+    const positions = {
+      left: { x: -r, y: 0 },
+      right: { x: r, y: 0 },
+      top: { x: 0, y: -r },
+      bottom: { x: 0, y: r }
+    };
+    return positions[side] ?? { x: 0, y: 0 };
+  }
+
+  const w = Number(node.attrs.w ?? 80);
+  const h = Number(node.attrs.h ?? 28);
+  const positions = {
+    left: { x: 0, y: h / 2 },
+    right: { x: w, y: h / 2 },
+    top: { x: w / 2, y: 0 },
+    bottom: { x: w / 2, y: h }
+  };
+  return positions[side] ?? { x: w / 2, y: h / 2 };
+}
+
+function resolvePortSide(attrs) {
+  return SIDE_ATTRS.find((side) => attrs[side]) ?? null;
+}
+
+function buildAnnotationLink(linkElement, styles, ports) {
+  const from = annotationEndpointAttr(linkElement, "from");
+  const to = annotationEndpointAttr(linkElement, "to");
+  if (!ports.has(from)) throw new GraphDslError(`Unknown annotation port "${from}"`);
+  if (!ports.has(to)) throw new GraphDslError(`Unknown annotation port "${to}"`);
+  return {
+    id: linkElement.attrs.id,
+    from,
+    to,
+    attrs: resolveStyledAttrs(linkElement.attrs, styles)
+  };
+}
+
+function buildAnnotationPath(pathElement, styles) {
+  const attrs = resolveStyledAttrs(pathElement.attrs, styles);
+  return {
+    id: attrs.id ?? null,
+    points: Array.isArray(attrs.points) ? attrs.points.map((point) => annotationPoint(point, `<Path> points`)) : null,
+    atUnit: coordinateUnit(attrs.atUnit ?? attrs.atunit ?? attrs.unit),
+    attrs
+  };
+}
+
+function annotationPointAttr(element, name, fallback = null) {
+  const value = element.attrs[name];
+  if (value == null && fallback) return annotationPoint(fallback, `<${element.name}> ${name}`);
+  if (!Array.isArray(value)) {
+    throw new GraphDslError(`<${element.name}> requires ${name}={[x, y]}`);
+  }
+  return annotationPoint(value, `<${element.name}> ${name}`);
+}
+
+function annotationPoint(value, label) {
+  if (!Array.isArray(value) || value.length < 2) {
+    throw new GraphDslError(`${label} must be [x, y]`);
+  }
+  return {
+    x: numberValue(value[0], `${label} x`),
+    y: numberValue(value[1], `${label} y`)
+  };
+}
+
+function coordinateUnit(value) {
+  const unit = String(value ?? "data").toLowerCase();
+  if (unit !== "data" && unit !== "screen") {
+    throw new GraphDslError(`Plot annotation unit must be "data" or "screen"`);
+  }
+  return unit;
+}
+
+function annotationEndpointAttr(element, name) {
+  const value = element.attrs[name];
+  if (typeof value === "string") return value;
+  throw new GraphDslError(`<${element.name}> "${name}" must be a quoted port address like "note.left"`);
 }
 
 function resolvePoints(element, data = new Map()) {
@@ -709,10 +912,20 @@ function assertKnownPlotChildren(plotElement) {
       || POINT_TAGS.has(child.name)
       || TEXT_TAGS.has(child.name)
       || LEGEND_TAGS.has(child.name)
+      || ANNOTATION_NODE_TAGS.has(child.name)
+      || ANNOTATION_LINK_TAGS.has(child.name)
+      || ANNOTATION_PATH_TAGS.has(child.name)
     ) {
       continue;
     }
     throw new GraphDslError(`Unknown tag <${child.name}> in <Plot>`);
+  }
+}
+
+function assertKnownAnnotationChildren(nodeElement) {
+  for (const child of nodeElement.children.filter((node) => node.type === "element")) {
+    if (PORT_TAGS.has(child.name)) continue;
+    throw new GraphDslError(`Unknown tag <${child.name}> in <${nodeElement.name}>`);
   }
 }
 
@@ -748,4 +961,14 @@ function requiredAttr(element, name) {
     throw new GraphDslError(`<${element.name}> requires ${name}`);
   }
   return element.attrs[name];
+}
+
+function assertUniqueAnnotationIds(nodes) {
+  const seen = new Set();
+  for (const node of nodes) {
+    if (seen.has(node.id)) {
+      throw new GraphDslError(`Duplicate annotation id "${node.id}"`);
+    }
+    seen.add(node.id);
+  }
 }

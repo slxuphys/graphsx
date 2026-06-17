@@ -21,7 +21,8 @@ export function renderPlot(svg, plot, options = {}) {
     padding,
     frame: options.frame ?? {},
     xDomain: expandDomain(xDomain),
-    yDomain: expandDomain(yDomain)
+    yDomain: expandDomain(yDomain),
+    arrowMarkerPrefix: `graphsx-plot-arrow-${plotClipIdCounter + 1}`
   };
 
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -30,11 +31,13 @@ export function renderPlot(svg, plot, options = {}) {
   const clipId = `graphsx-plot-clip-${plotClipIdCounter += 1}`;
   const defs = el(context, "defs");
   defs.append(drawPlotClipPath(context, clipId));
+  appendArrowMarkers(context, defs);
   const axisLayer = el(context, "g", { class: "plot-axes" });
   const dataLayer = el(context, "g", { class: "plot-data", clipPath: `url(#${clipId})` });
+  const annotationLayer = el(context, "g", { class: "plot-annotations" });
   const labelLayer = el(context, "g", { class: "plot-labels" });
   const legendLayer = el(context, "g", { class: "plot-legends" });
-  svg.append(defs, axisLayer, dataLayer, labelLayer, legendLayer);
+  svg.append(defs, axisLayer, dataLayer, annotationLayer, labelLayer, legendLayer);
 
   if (booleanAttr(plot.attrs.box, false)) {
     axisLayer.append(drawPlotBox(context));
@@ -43,6 +46,7 @@ export function renderPlot(svg, plot, options = {}) {
   for (const line of plot.lines) dataLayer.append(drawLine(context, line));
   for (const curve of plot.curves) dataLayer.append(drawCurve(context, curve));
   for (const mark of plot.marks) dataLayer.append(drawMark(context, mark));
+  drawAnnotations(context, annotationLayer);
   for (const label of plot.labels) labelLayer.append(drawText(context, label));
   for (const legend of plot.legends ?? []) appendMaybe(legendLayer, drawLegend(context, legend));
 
@@ -278,6 +282,69 @@ function drawPlotClipPath(context, id) {
   return clipPath;
 }
 
+function appendArrowMarkers(context, defs) {
+  const keys = annotationArrowMarkerKeys(context.plot.annotations);
+  for (const key of keys) {
+    const size = Number(key.replace(/_/g, "."));
+    defs.append(annotationArrowMarker(context, "head", key, size), annotationArrowMarker(context, "tail", key, size));
+  }
+}
+
+function annotationArrowMarkerKeys(annotations) {
+  const keys = new Set();
+  for (const item of [...(annotations?.links ?? []), ...(annotations?.paths ?? [])]) {
+    if (hasArrow(item.attrs)) {
+      keys.add(arrowMarkerKey(arrowSize(item.attrs)));
+    }
+  }
+  return keys;
+}
+
+function annotationArrowMarker(context, kind, key, size) {
+  const marker = el(context, "marker", {
+    id: arrowMarkerId(context, kind, key),
+    markerWidth: size,
+    markerHeight: size,
+    refX: kind === "head" ? size * 5 / 6 : size / 6,
+    refY: size / 2,
+    orient: "auto",
+    markerUnits: "strokeWidth"
+  });
+  marker.append(el(context, "path", {
+    d: kind === "head"
+      ? `M ${size / 6} ${size / 6} L ${size * 5 / 6} ${size / 2} L ${size / 6} ${size * 5 / 6} z`
+      : `M ${size * 5 / 6} ${size / 6} L ${size / 6} ${size / 2} L ${size * 5 / 6} ${size * 5 / 6} z`,
+    fill: "context-stroke"
+  }));
+  return marker;
+}
+
+function arrowMarkerAttrs(context, attrs) {
+  const key = arrowMarkerKey(arrowSize(attrs));
+  return {
+    ...(booleanAttr(attrs.tailArrow ?? attrs.tailarrow, false) ? { markerStart: `url(#${arrowMarkerId(context, "tail", key)})` } : {}),
+    ...(booleanAttr(attrs.headArrow ?? attrs.headarrow, false) ? { markerEnd: `url(#${arrowMarkerId(context, "head", key)})` } : {})
+  };
+}
+
+function hasArrow(attrs = {}) {
+  return booleanAttr(attrs.headArrow ?? attrs.headarrow, false) || booleanAttr(attrs.tailArrow ?? attrs.tailarrow, false);
+}
+
+function arrowSize(attrs = {}) {
+  const size = Number(attrs.arrowSize ?? attrs.arrowsize ?? 12);
+  return Number.isFinite(size) && size > 0 ? size : 12;
+}
+
+function arrowMarkerKey(size) {
+  return String(Number(size.toFixed(3))).replace(/[^0-9A-Za-z_-]/g, "_");
+}
+
+function arrowMarkerId(context, kind, key) {
+  const suffix = key === "12" ? "" : `-${key}`;
+  return `${context.arrowMarkerPrefix}-${kind}${suffix}`;
+}
+
 function axisLabel(context, axis, x, y, anchor, rotate = 0) {
   const label = axis.attrs.label;
   if (label == null) return null;
@@ -412,6 +479,153 @@ function drawText(context, label) {
     label.attrs.style,
     Number(label.attrs.rotate ?? 0)
   );
+}
+
+function drawAnnotations(context, layer) {
+  const annotations = context.plot.annotations ?? { nodes: [], links: [], paths: [] };
+  const nodePositions = new Map(annotations.nodes.map((node) => [node.id, annotationNodePosition(context, node)]));
+  const ports = annotationPorts(annotations.nodes, nodePositions);
+
+  for (const path of annotations.paths) {
+    layer.append(drawAnnotationPath(context, path));
+  }
+  for (const link of annotations.links) {
+    const from = ports.get(link.from);
+    const to = ports.get(link.to);
+    if (from && to) {
+      layer.append(drawAnnotationLink(context, link, from, to));
+    }
+  }
+  for (const node of annotations.nodes) {
+    appendMaybe(layer, drawAnnotationNode(context, node, nodePositions.get(node.id)));
+  }
+}
+
+function annotationNodePosition(context, node) {
+  return node.atUnit === "screen" ? { ...node.at } : project(context, node.at);
+}
+
+function annotationPorts(nodes, positions) {
+  const ports = new Map();
+  for (const node of nodes) {
+    const origin = positions.get(node.id);
+    if (!origin) continue;
+    for (const [id, port] of Object.entries(node.ports ?? {})) {
+      ports.set(`${node.id}.${id}`, {
+        x: origin.x + port.x,
+        y: origin.y + port.y,
+        angle: port.angle ?? 0
+      });
+    }
+  }
+  return ports;
+}
+
+function drawAnnotationNode(context, node, at) {
+  if (node.shape === "anchor") return null;
+  if (node.shape === "circle") {
+    const group = el(context, "g", { class: "plot-annotation-node plot-annotation-circle" });
+    const r = Number(node.attrs.r ?? 5);
+    group.append(styledEl(context, "circle", node.attrs.style, {
+      class: "plot-annotation-shape",
+      fill: "#ffffff",
+      stroke: "#111111",
+      strokeWidth: 1.5,
+      cx: at.x,
+      cy: at.y,
+      r
+    }));
+    appendMaybe(group, annotationNodeLabel(context, node, at.x, at.y));
+    return group;
+  }
+
+  const w = Number(node.attrs.w ?? 80);
+  const h = Number(node.attrs.h ?? 28);
+  const group = el(context, "g", { class: "plot-annotation-node plot-annotation-rect" });
+  group.append(styledEl(context, "rect", node.attrs.style, {
+    class: "plot-annotation-shape",
+    fill: "#ffffff",
+    stroke: "#111111",
+    strokeWidth: 1.5,
+    x: at.x,
+    y: at.y,
+    width: w,
+    height: h,
+    rx: Number(node.attrs.corner ?? node.attrs.rx ?? 4)
+  }));
+  appendMaybe(group, annotationNodeLabel(context, node, at.x + w / 2, at.y + h / 2));
+  return group;
+}
+
+function annotationNodeLabel(context, node, x, y) {
+  if (node.attrs.label == null) return null;
+  return drawPlotLabel(context, node.attrs.label, x, y, "plot-annotation-label", "middle", node.attrs.labelStyle ?? null, 0, "middle");
+}
+
+function drawAnnotationLink(context, link, from, to) {
+  return styledEl(context, "path", linkStyle(link.attrs.style), {
+    class: "plot-annotation-link",
+    fill: "none",
+    stroke: "#111111",
+    strokeWidth: 1.5,
+    ...arrowMarkerAttrs(context, link.attrs),
+    d: `M ${from.x} ${from.y} L ${to.x} ${to.y}`
+  });
+}
+
+function drawAnnotationPath(context, path) {
+  const attrs = {
+    class: "plot-annotation-path",
+    fill: "none",
+    stroke: "#111111",
+    strokeWidth: 1.5,
+    ...arrowMarkerAttrs(context, path.attrs),
+    d: annotationPathData(context, path)
+  };
+  return styledEl(context, "path", path.attrs.style, attrs);
+}
+
+function annotationPathData(context, path) {
+  if (Array.isArray(path.points)) {
+    const points = path.points.map((point) => (path.atUnit === "screen" ? point : project(context, point)));
+    const data = routedAnnotationPathData(points, Number(path.attrs.corner ?? 0));
+    return booleanAttr(path.attrs.closed, false) ? `${data} Z` : data;
+  }
+  return path.attrs.d ?? "";
+}
+
+function routedAnnotationPathData(points, corner) {
+  if (!corner || points.length < 3) return pathData(points);
+  return roundedPathData(points, corner);
+}
+
+function roundedPathData(points, radius) {
+  if (points.length < 3) return pathData(points);
+  const commands = [`M ${points[0].x} ${points[0].y}`];
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    const inLength = Math.hypot(current.x - previous.x, current.y - previous.y);
+    const outLength = Math.hypot(next.x - current.x, next.y - current.y);
+    const cut = Math.min(Number(radius), inLength / 2, outLength / 2);
+    if (!Number.isFinite(cut) || cut <= 0) {
+      commands.push(`L ${current.x} ${current.y}`);
+      continue;
+    }
+    const before = {
+      x: current.x - (current.x - previous.x) / inLength * cut,
+      y: current.y - (current.y - previous.y) / inLength * cut
+    };
+    const after = {
+      x: current.x + (next.x - current.x) / outLength * cut,
+      y: current.y + (next.y - current.y) / outLength * cut
+    };
+    commands.push(`L ${before.x} ${before.y}`, `Q ${current.x} ${current.y} ${after.x} ${after.y}`);
+  }
+  const last = points[points.length - 1];
+  commands.push(`L ${last.x} ${last.y}`);
+  return commands.join(" ");
 }
 
 function drawLegend(context, legend) {
@@ -604,7 +818,9 @@ function plotBounds(plot) {
     ...plot.curves.flatMap((curve) => curve.points),
     ...plot.lines.flatMap((line) => line.points ?? [line.from, line.to]),
     ...plot.marks.flatMap((mark) => mark.points ?? [mark.at]),
-    ...plot.labels.map((label) => label.at)
+    ...plot.labels.map((label) => label.at),
+    ...(plot.annotations?.nodes ?? []).filter((node) => node.atUnit !== "screen").map((node) => node.at),
+    ...(plot.annotations?.paths ?? []).filter((path) => path.atUnit !== "screen").flatMap((path) => path.points ?? [])
   ];
   if (points.length === 0) {
     return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
@@ -716,7 +932,13 @@ function lineStyle(style) {
   return lineOnly;
 }
 
+function linkStyle(style) {
+  return lineStyle(style);
+}
+
 function svgAttrName(key) {
+  const rawSvgAttrs = new Set(["markerWidth", "markerHeight", "refX", "refY", "markerUnits"]);
+  if (rawSvgAttrs.has(key)) return key;
   return key.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`);
 }
 
