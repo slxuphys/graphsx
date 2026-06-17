@@ -1,6 +1,7 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MATH_LABEL_HEIGHT = 34;
 const MATH_HANGING_INSET = 8;
+let plotClipIdCounter = 0;
 
 export function renderPlot(svg, plot, options = {}) {
   const width = Number(plot.attrs.width ?? plot.attrs.w ?? options.minWidth ?? 720);
@@ -23,11 +24,14 @@ export function renderPlot(svg, plot, options = {}) {
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
   svg.replaceChildren();
 
+  const clipId = `graphsx-plot-clip-${plotClipIdCounter += 1}`;
+  const defs = el(context, "defs");
+  defs.append(drawPlotClipPath(context, clipId));
   const axisLayer = el(context, "g", { class: "plot-axes" });
-  const dataLayer = el(context, "g", { class: "plot-data" });
+  const dataLayer = el(context, "g", { class: "plot-data", clipPath: `url(#${clipId})` });
   const labelLayer = el(context, "g", { class: "plot-labels" });
   const legendLayer = el(context, "g", { class: "plot-legends" });
-  svg.append(axisLayer, dataLayer, labelLayer, legendLayer);
+  svg.append(defs, axisLayer, dataLayer, labelLayer, legendLayer);
 
   if (booleanAttr(plot.attrs.box, false)) {
     axisLayer.append(drawPlotBox(context));
@@ -60,6 +64,7 @@ function drawAxes(context, layer) {
     : [{ dim: "x", attrs: { dim: "x" } }, { dim: "y", attrs: { dim: "y" } }];
 
   for (const axis of axes) {
+    const labelGap = Number(axis.attrs.labelGap ?? axis.attrs.labelgap ?? 40);
     if (axis.dim === "x") {
       const y = context.height - context.padding.bottom;
       layer.append(styledEl(context, "line", axis.attrs.style, {
@@ -72,7 +77,7 @@ function drawAxes(context, layer) {
         y2: y
       }));
       drawTicks(context, layer, axis);
-      appendMaybe(layer, axisLabel(context, axis, plotCenterX(context), y + 40, "middle"));
+      appendMaybe(layer, axisLabel(context, axis, plotCenterX(context), y + labelGap, "middle"));
     } else {
       const x = context.padding.left;
       layer.append(styledEl(context, "line", axis.attrs.style, {
@@ -85,25 +90,29 @@ function drawAxes(context, layer) {
         y2: context.height - context.padding.bottom
       }));
       drawTicks(context, layer, axis);
-      appendMaybe(layer, axisLabel(context, axis, x - 40, plotCenterY(context), "middle", -90));
+      appendMaybe(layer, axisLabel(context, axis, x - labelGap, plotCenterY(context), "middle", -90));
     }
   }
 }
 
 function drawTicks(context, layer, axis) {
-  const tickSets = axis.ticks?.length > 0 ? axis.ticks : [{ attrs: axis.attrs }];
+  const tickSets = axis.ticks?.length > 0
+    ? axis.ticks.map((tickSet) => ({ attrs: tickSet.attrs, axisShortcut: false }))
+    : [{ attrs: axis.attrs, axisShortcut: true }];
   for (const tickSet of tickSets) {
-    drawTickSet(context, layer, axis, tickSet.attrs);
+    drawTickSet(context, layer, axis, tickSet.attrs, tickSet.axisShortcut);
   }
 }
 
-function drawTickSet(context, layer, axis, attrs) {
+function drawTickSet(context, layer, axis, attrs, axisShortcut) {
   const values = tickValues(context, axis, attrs);
   if (values.length === 0) return;
 
   const labels = tickLabels(attrs, values);
   const length = Number(attrs.size ?? attrs.tickSize ?? attrs.ticksize ?? 6);
-  const labelGap = Number(attrs.labelGap ?? attrs.labelgap ?? attrs.tickLabelGap ?? attrs.ticklabelgap ?? 8);
+  const labelGap = Number(axisShortcut
+    ? attrs.tickLabelGap ?? attrs.ticklabelgap ?? 8
+    : attrs.labelGap ?? attrs.labelgap ?? attrs.tickLabelGap ?? attrs.ticklabelgap ?? 8);
   const style = attrs.style;
   const labelStyle = attrs.labelStyle ?? attrs.labelstyle ?? tickLabelStyle(style);
   const showGrid = booleanAttr(attrs.grid, false);
@@ -253,6 +262,17 @@ function drawPlotBox(context) {
     stroke: "#26312d",
     strokeWidth: 1.5
   });
+}
+
+function drawPlotClipPath(context, id) {
+  const clipPath = el(context, "clipPath", { id });
+  clipPath.append(el(context, "rect", {
+    x: context.padding.left,
+    y: context.padding.top,
+    width: plotWidth(context),
+    height: plotHeight(context)
+  }));
+  return clipPath;
 }
 
 function axisLabel(context, axis, x, y, anchor, rotate = 0) {

@@ -81,6 +81,90 @@ test("supports line series, scatter series, fmt, and direct style props", () => 
   assert.deepEqual(plot.marks[0].attrs.style, { fill: "#ef4444" });
 });
 
+test("supports reusable plot data", () => {
+  const plot = parsePlot(`
+    <Plot>
+      <Data id="samples" x={[0, 1, 2]} y={[1, 4, 9]} />
+      <Data id="baseline" points={[[0, 0], [2, 0]]} />
+      <Line data="samples" label="fit" />
+      <Scatter data="samples" label="samples" />
+      <Curve data="baseline" />
+    </Plot>
+  `);
+
+  assert.deepEqual(plot.data.samples, [
+    { x: 0, y: 1 },
+    { x: 1, y: 4 },
+    { x: 2, y: 9 }
+  ]);
+  assert.deepEqual(plot.lines[0].points[2], { x: 2, y: 9 });
+  assert.deepEqual(plot.marks[0].points[1], { x: 1, y: 4 });
+  assert.deepEqual(plot.curves[0].points[1], { x: 2, y: 0 });
+  assert.notEqual(plot.lines[0].points, plot.marks[0].points);
+});
+
+test("rejects duplicate and unknown plot data", () => {
+  assert.throws(
+    () => parsePlot(`
+      <Plot>
+        <Data id="samples" points={[[0, 0]]} />
+        <Data id="samples" points={[[1, 1]]} />
+      </Plot>
+    `),
+    /Duplicate data id "samples"/
+  );
+
+  assert.throws(
+    () => parsePlot(`
+      <Plot>
+        <Line data="missing" />
+      </Plot>
+    `),
+    /Unknown data "missing"/
+  );
+});
+
+test("generates plot data from math expressions", () => {
+  const plot = parsePlot(`
+    <Plot>
+      <Data id="sin" y="sin(x)" domain={[0, 2*pi]} samples={5} />
+      <Data id="fit" y="a * exp(-b*x)" domain={[0, 2]} samples={3} params={{ a: 2, b: 0.5 }} />
+      <Data id="sparse" x={[0, pi/2, pi]} y="sin(x)" />
+      <Line data="sin" />
+      <Line data="fit" />
+      <Scatter data="sparse" />
+    </Plot>
+  `);
+
+  assert.equal(plot.data.sin.length, 5);
+  assert.equal(plot.data.sin[0].x, 0);
+  assert.equal(Math.round(plot.data.sin[1].y * 1000) / 1000, 1);
+  assert.equal(Math.round(plot.data.sin[3].y * 1000) / 1000, -1);
+  assert.equal(Math.round(plot.data.fit[1].y * 1000) / 1000, 1.213);
+  assert.deepEqual(plot.data.sparse.map((point) => Math.round(point.y * 1000) / 1000), [0, 1, 0]);
+  assert.deepEqual(plot.lines[0].points[2], plot.data.sin[2]);
+});
+
+test("rejects invalid generated plot data expressions", () => {
+  assert.throws(
+    () => parsePlot(`
+      <Plot>
+        <Data id="bad" y="a * x" domain={[0, 1]} />
+      </Plot>
+    `),
+    /Unknown variable "a"/
+  );
+
+  assert.throws(
+    () => parsePlot(`
+      <Plot>
+        <Data id="bad" y="unsafe(x)" domain={[0, 1]} />
+      </Plot>
+    `),
+    /Unknown math function "unsafe"/
+  );
+});
+
 test("renders fmt line and marker shorthand", () => {
   const plot = parsePlot(`
     <Plot>
@@ -187,6 +271,38 @@ test("renders visible plot defaults", () => {
   assert.ok(calls.some((node) => node.tag === "line" && node.attrs.class?.includes("plot-axis") && node.attrs.stroke));
 });
 
+test("clips plotted data to the plot area", () => {
+  const plot = parsePlot(`
+    <Plot width={400} height={260} padding={50} xDomain={[0, 1]} yDomain={[0, 1]}>
+      <Line points={[[-1, 0.5], [2, 0.5]]} />
+    </Plot>
+  `);
+  const calls = [];
+  const documentRef = {
+    createElementNS(_namespace, tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    }
+  };
+  const svg = createMockNode("svg");
+  svg.ownerDocument = documentRef;
+
+  renderPlot(svg, plot, { document: documentRef });
+
+  const dataLayer = calls.find((node) => node.tag === "g" && node.attrs.class === "plot-data");
+  const axisLayer = calls.find((node) => node.tag === "g" && node.attrs.class === "plot-axes");
+  const clipPath = calls.find((node) => node.tag === "clipPath");
+  const clipRect = clipPath.children[0];
+
+  assert.match(dataLayer.attrs["clip-path"], /^url\(#graphsx-plot-clip-\d+\)$/);
+  assert.equal(axisLayer.attrs["clip-path"], undefined);
+  assert.equal(clipRect.attrs.x, "50");
+  assert.equal(clipRect.attrs.y, "50");
+  assert.equal(clipRect.attrs.width, "300");
+  assert.equal(clipRect.attrs.height, "160");
+});
+
 test("centers axis labels and supports a plot box", () => {
   const plot = parsePlot(`
     <Plot width={400} height={260} padding={50} box>
@@ -221,6 +337,66 @@ test("centers axis labels and supports a plot box", () => {
     && node.attrs.y === "130"
     && node.attrs.transform === "rotate(-90 10 130)"
   )));
+});
+
+test("supports axis label gaps", () => {
+  const plot = parsePlot(`
+    <Plot width={400} height={260} padding={50}>
+      <Axis x label="x" labelGap={52} />
+      <Axis y label="y" labelGap={44} />
+    </Plot>
+  `);
+  const calls = [];
+  const documentRef = {
+    createElementNS(_namespace, tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    }
+  };
+  const svg = createMockNode("svg");
+  svg.ownerDocument = documentRef;
+
+  renderPlot(svg, plot, { document: documentRef });
+
+  const labels = calls.filter((node) => node.tag === "text" && node.attrs.class === "plot-axis-label");
+
+  assert.ok(labels.some((node) => node.text === "x" && node.attrs.x === "200" && node.attrs.y === "262"));
+  assert.ok(labels.some((node) => (
+    node.text === "y"
+    && node.attrs.x === "6"
+    && node.attrs.y === "130"
+    && node.attrs.transform === "rotate(-90 6 130)"
+  )));
+});
+
+test("keeps axis labelGap separate from tick label gap", () => {
+  const plot = parsePlot(`
+    <Plot width={400} height={260} padding={50} xDomain={[0, 1]} yDomain={[0, 1]}>
+      <Axis x label="x" labelGap={70} ticks={[0]} />
+      <Axis y label="y" labelGap={70} tickLabelGap={12} ticks={[0]} />
+    </Plot>
+  `);
+  const calls = [];
+  const documentRef = {
+    createElementNS(_namespace, tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    }
+  };
+  const svg = createMockNode("svg");
+  svg.ownerDocument = documentRef;
+
+  renderPlot(svg, plot, { document: documentRef });
+
+  const axisLabels = calls.filter((node) => node.tag === "text" && node.attrs.class === "plot-axis-label");
+  const tickLabels = calls.filter((node) => node.tag === "text" && node.attrs.class === "plot-tick-label");
+
+  assert.ok(axisLabels.some((node) => node.text === "x" && node.attrs.y === "280"));
+  assert.ok(axisLabels.some((node) => node.text === "y" && node.attrs.x === "-20"));
+  assert.ok(tickLabels.some((node) => node.text === "0" && node.attrs.y === "224"));
+  assert.ok(tickLabels.some((node) => node.text === "0" && node.attrs.x === "32"));
 });
 
 test("renders nice automatic ticks and explicit tick values", () => {
@@ -316,6 +492,35 @@ test("supports Ticks children with labels and math default tick labels", () => {
   assert.equal(mathTickLabels.length, 4);
   assert.equal(mathTickLabels.filter((node) => node.attrs.y === "216").length, 3);
   assert.ok(rendered.includes("1"));
+});
+
+test("supports math expressions in explicit tick values", () => {
+  const plot = parsePlot(`
+    <Plot width={560} height={340} xDomain={[0, 2*pi]} yDomain={[-1, 1]}>
+      <Axis x>
+        <Ticks values={[0, pi/2, pi, 3*pi/2, 2*pi]} />
+      </Axis>
+    </Plot>
+  `);
+  const calls = [];
+  const documentRef = {
+    createElementNS(_namespace, tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    }
+  };
+  const svg = createMockNode("svg");
+  svg.ownerDocument = documentRef;
+
+  renderPlot(svg, plot, { document: documentRef });
+
+  const xTicks = calls.filter((node) => node.tag === "line" && node.attrs.class === "plot-tick plot-tick-x");
+
+  assert.equal(plot.axes[0].ticks[0].attrs.values.length, 5);
+  assert.equal(Math.round(plot.attrs.xDomain[1] * 1000) / 1000, 6.283);
+  assert.equal(Math.round(plot.axes[0].ticks[0].attrs.values[1] * 1000) / 1000, 1.571);
+  assert.equal(xTicks.length, 5);
 });
 
 test("renders grid lines from axis ticks", () => {
