@@ -25,6 +25,8 @@ const SIDE_ANGLES = {
   bottom: 90
 };
 const REF_LITERAL = "__graphDslRef";
+const ADDRESS_LITERAL = "__graphDslAddress";
+const POINT_LITERAL = "__graphDslPoint";
 const TEMPLATE_LITERAL = "__graphDslTemplate";
 const EXPRESSION_LITERAL = "__graphDslExpression";
 
@@ -67,11 +69,13 @@ export function buildGraphModel(graphElement) {
   graphElement = expandRepeats(graphElement);
 
   const shapeElements = graphElement.children.filter(isElementNamed("Shape"));
-  const shapes = new Map(shapeElements.map((shape) => [requiredAttr(shape, "id"), shape]));
+  assertUniqueShapeIds(shapeElements);
+  const shapes = resolveShapeDefinitions(shapeElements);
   const styles = buildStyles(graphElement.children.filter(isStyleElement));
   assertKnownChildren(graphElement, shapes, { allowStyle: true });
-  for (const shape of shapeElements) {
+  for (const shape of shapes.values()) {
     assertKnownChildren(shape, shapes);
+    validateShapeDefinitionIds(shape, shapes);
   }
 
   const nodes = graphElement.children.filter((node) => isNodeElement(node, shapes)).map((node) => {
@@ -90,8 +94,11 @@ export function buildGraphModel(graphElement) {
     paths
   };
 
+  validateUniqueIds(graph);
   applyLayout(graph);
+  resolveGraphAddresses(graph, { assertEdges: false });
   applyTransforms(graph);
+  applyPlacements(graph);
   resolveGraphAddresses(graph);
   return graph;
 }
@@ -120,6 +127,7 @@ function buildNode(nodeElement, shapes, styles, context) {
     return buildGroupedNode(base, shapes.get(normalized.shape), shapes, styles);
   }
 
+  assertUniqueChildIds(nodeElement.children.filter(isPortElement), "port", ` on "${base.id}"`);
   for (const legElement of nodeElement.children.filter(isPortElement)) {
     const leg = buildLeg(legElement, base, styles);
     base.legs[leg.id] = leg;
@@ -131,6 +139,7 @@ function buildNode(nodeElement, shapes, styles, context) {
 
 function buildGroupedNode(instance, shapeElement, shapes, styles) {
   shapeElement = substituteShapeProps(shapeElement, instance.attrs);
+  assertUniqueChildIds(shapeElement.children.filter(isPortElement), "port", ` on "${instance.id}"`);
 
   const childContext = {
     x: instance.x,
@@ -247,8 +256,8 @@ function resolveLegPosition(node, side, explicitX, explicitY) {
 
 function buildEdge(edgeElement, styles) {
   return {
-    from: requiredAttr(edgeElement, "from"),
-    to: requiredAttr(edgeElement, "to"),
+    from: endpointAttr(edgeElement, "from"),
+    to: endpointAttr(edgeElement, "to"),
     attrs: resolveStyledAttrs(edgeElement.attrs, styles)
   };
 }
@@ -383,8 +392,13 @@ function moveNodeTo(node, x, y) {
 }
 
 function moveNodeBy(node, dx, dy) {
-  node.x += dx;
-  node.y += dy;
+  if (node.transform) {
+    node.transform.e += dx;
+    node.transform.f += dy;
+  } else {
+    node.x += dx;
+    node.y += dy;
+  }
   for (const leg of Object.values(node.legs)) {
     leg.x += dx;
     leg.y += dy;
@@ -395,13 +409,14 @@ function moveNodeBy(node, dx, dy) {
   for (const path of node.paths ?? []) {
     movePathBy(path, dx, dy);
   }
-  if (node.transform) {
-    node.transform.e += dx;
-    node.transform.f += dy;
-  }
 }
 
 function movePathBy(path, dx, dy) {
+  if (path.transform) {
+    path.transform.e += dx;
+    path.transform.f += dy;
+    return;
+  }
   if (Array.isArray(path.points)) {
     for (const point of path.points) {
       point.x += dx;
@@ -516,12 +531,22 @@ function nodeTransformOrigin(node) {
     };
   }
 
+  const anchor = transformAnchor(node);
+  if (anchor) {
+    return { x: anchor.x, y: anchor.y };
+  }
+
   if (node.children.length > 0 || (node.paths?.length ?? 0) > 0) {
     return { x: node.x, y: node.y };
   }
 
   const box = untransformedNodeBox(node);
   return { x: box.cx, y: box.cy };
+}
+
+function transformAnchor(node) {
+  if (node.attrs.anchor == null) return null;
+  return findPortInNode(node, String(node.attrs.anchor));
 }
 
 function pathOrigin(path) {
@@ -642,7 +667,11 @@ function rootAddress(address) {
   return String(address).split(".")[0];
 }
 
-function resolveGraphAddresses(graph) {
+function nodeAddress(address) {
+  return String(address).split(".").slice(0, -1).join(".");
+}
+
+function resolveGraphAddresses(graph, options = {}) {
   const ports = indexPorts(graph.nodes);
 
   for (const node of flattenNodes(graph.nodes)) {
@@ -666,10 +695,131 @@ function resolveGraphAddresses(graph) {
     }
   }
 
-  for (const edge of allEdges(graph)) {
-    assertPortAddress(edge.from, ports);
-    assertPortAddress(edge.to, ports);
+  if (options.assertEdges !== false) {
+    for (const edge of allEdges(graph)) {
+      assertPortAddress(edge.from, ports);
+      assertPortAddress(edge.to, ports);
+    }
   }
+}
+
+function applyPlacements(graph) {
+  const pending = new Set(flattenNodes(graph.nodes).filter(hasPlacementRef));
+
+  while (pending.size > 0) {
+    const ports = indexPorts(graph.nodes);
+    let progressed = false;
+
+    for (const node of [...pending]) {
+      const targetAddress = placementDependency(node.attrs.at);
+      const dependency = targetAddress ? nodeAddress(targetAddress) : null;
+      if (dependency && isPendingDependency(dependency, pending, node)) {
+        continue;
+      }
+
+      placeNodeAtReference(node, ports);
+      pending.delete(node);
+      progressed = true;
+    }
+
+    if (!progressed) {
+      const ids = [...pending].map((node) => node.id).join(", ");
+      throw new GraphDslError(`Cyclic or unresolved placement reference involving ${ids}`);
+    }
+  }
+}
+
+function hasPlacementRef(node) {
+  return placementAddress(node.attrs.at) != null;
+}
+
+function isPendingDependency(dependency, pending, node) {
+  if (dependency === node.id || node.id.startsWith(`${dependency}.`)) {
+    return false;
+  }
+  for (const pendingNode of pending) {
+    if (pendingNode === node) continue;
+    if (pendingNode.id === dependency || dependency.startsWith(`${pendingNode.id}.`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function placeNodeAtReference(node, ports) {
+  const target = placementPoint(node.attrs.at, ports);
+  if (!target) return;
+
+  const anchor = placementAnchor(node, ports);
+  moveNodeBy(node, target.x - anchor.x, target.y - anchor.y);
+}
+
+function placementDependency(value) {
+  const expression = placementExpression(value);
+  return expression?.address ?? null;
+}
+
+function placementPoint(value, ports) {
+  const expression = placementExpression(value);
+  if (!expression) return null;
+
+  const port = ports.get(expression.address);
+  if (!port) {
+    throw new GraphDslError(`Unknown placement port "${expression.address}"`);
+  }
+
+  return expression.offsets.reduce((point, offset) => {
+    const x = pointExpressionNumber(offset.x, expression);
+    const y = pointExpressionNumber(offset.y, expression);
+    return {
+      x: point.x + x,
+      y: point.y + y
+    };
+  }, { x: port.x, y: port.y });
+}
+
+function placementExpression(value) {
+  if (isPointLiteral(value)) return value[POINT_LITERAL];
+  if (isAddressLiteral(value)) return { address: value[ADDRESS_LITERAL], offsets: [] };
+  if (typeof value === "string" && isAddress(value)) return { address: value, offsets: [] };
+  return null;
+}
+
+function placementAnchor(node, ports) {
+  if (node.attrs.anchor == null) {
+    return { x: node.x, y: node.y };
+  }
+
+  const anchor = String(node.attrs.anchor);
+  const port = findPortInNode(node, anchor, ports);
+  if (!port) {
+    throw new GraphDslError(`Unknown anchor port "${anchor}" on "${node.id}"`);
+  }
+  return port;
+}
+
+function findPortInNode(node, anchor, ports = null) {
+  if (!anchor.includes(".") && node.legs[anchor]) {
+    return node.legs[anchor];
+  }
+
+  const address = `${node.id}.${anchor}`;
+  if (ports) {
+    return ports.get(address) ?? null;
+  }
+
+  for (const candidate of flattenNodes([node])) {
+    for (const [id, leg] of Object.entries(candidate.legs)) {
+      if (`${candidate.id}.${id}` === address) {
+        return leg;
+      }
+    }
+  }
+  return null;
+}
+
+function placementAddress(value) {
+  return placementDependency(value);
 }
 
 function indexPorts(nodes) {
@@ -719,6 +869,139 @@ function assertPortAddress(address, ports) {
   if (!ports.has(address)) {
     throw new GraphDslError(`Unknown port address "${address}"`);
   }
+}
+
+function assertUniqueShapeIds(shapeElements) {
+  const seen = new Set();
+  for (const shape of shapeElements) {
+    const id = requiredAttr(shape, "id");
+    if (seen.has(id)) {
+      throw new GraphDslError(`Duplicate shape id "${id}"`);
+    }
+    seen.add(id);
+  }
+}
+
+function resolveShapeDefinitions(shapeElements) {
+  const rawShapes = new Map(shapeElements.map((shape) => [requiredAttr(shape, "id"), shape]));
+  const resolved = new Map();
+  const resolving = new Set();
+
+  const resolve = (id) => {
+    if (resolved.has(id)) return resolved.get(id);
+    const shape = rawShapes.get(id);
+    if (!shape) {
+      throw new GraphDslError(`Unknown parent shape "${id}"`);
+    }
+    if (resolving.has(id)) {
+      throw new GraphDslError(`Cyclic shape inheritance involving "${id}"`);
+    }
+
+    resolving.add(id);
+    const parentId = shape.attrs.from;
+    let result = shape;
+    if (parentId != null) {
+      if (!rawShapes.has(parentId)) {
+        throw new GraphDslError(`Unknown parent shape "${parentId}"`);
+      }
+      const parent = resolve(parentId);
+      result = mergeShapeDefinition(parent, shape);
+    }
+    resolving.delete(id);
+    resolved.set(id, result);
+    return result;
+  };
+
+  for (const id of rawShapes.keys()) {
+    resolve(id);
+  }
+  return resolved;
+}
+
+function mergeShapeDefinition(parent, child) {
+  return {
+    ...child,
+    attrs: {
+      ...parent.attrs,
+      ...child.attrs,
+      id: child.attrs.id
+    },
+    children: [
+      ...parent.children,
+      ...child.children
+    ]
+  };
+}
+
+function validateShapeDefinitionIds(shape, shapes) {
+  const id = requiredAttr(shape, "id");
+  assertUniqueChildIds(shape.children.filter((child) => isNodeElement(child, shapes)), "child node", ` in shape "${id}"`);
+  assertUniqueChildIds(shape.children.filter(isPortElement), "port", ` in shape "${id}"`);
+  assertUniqueChildIds(shape.children.filter((child) => isPathElement(child) && child.attrs.id != null), "path", ` in shape "${id}"`);
+}
+
+function assertUniqueChildIds(elements, label, suffix = "") {
+  const seen = new Set();
+  for (const element of elements) {
+    const id = requiredAttr(element, "id");
+    if (seen.has(id)) {
+      throw new GraphDslError(`Duplicate ${label} id "${id}"${suffix}`);
+    }
+    seen.add(id);
+  }
+}
+
+function validateUniqueIds(graph) {
+  assertUniqueNodeIds(graph.nodes);
+  for (const node of flattenNodes(graph.nodes)) {
+    assertUniquePortIds(node);
+  }
+  assertUniquePathIds(flattenModelPaths(graph));
+}
+
+function assertUniqueNodeIds(nodes) {
+  const seen = new Set();
+  for (const node of flattenNodes(nodes)) {
+    if (seen.has(node.id)) {
+      throw new GraphDslError(`Duplicate node id "${node.id}"`);
+    }
+    seen.add(node.id);
+  }
+}
+
+function assertUniquePortIds(node) {
+  const seen = new Set();
+  for (const id of Object.keys(node.legs)) {
+    if (seen.has(id)) {
+      throw new GraphDslError(`Duplicate port id "${id}" on "${node.id}"`);
+    }
+    seen.add(id);
+  }
+}
+
+function assertUniquePathIds(paths) {
+  const seen = new Set();
+  for (const path of paths) {
+    if (path.id == null) continue;
+    if (seen.has(path.id)) {
+      throw new GraphDslError(`Duplicate path id "${path.id}"`);
+    }
+    seen.add(path.id);
+  }
+}
+
+function flattenModelPaths(graph) {
+  return [
+    ...(graph.paths ?? []),
+    ...(graph.nodes ?? []).flatMap((node) => flattenNodePaths(node))
+  ];
+}
+
+function flattenNodePaths(node) {
+  return [
+    ...(node.paths ?? []),
+    ...node.children.flatMap((child) => flattenNodePaths(child))
+  ];
 }
 
 function describeShape(shapeElement) {
@@ -788,7 +1071,7 @@ function normalizeNodeElement(nodeElement, shapes, styles) {
 }
 
 function hasExplicitPosition(attrs) {
-  return Array.isArray(attrs.at) || attrs.x != null || attrs.y != null;
+  return attrs.at != null || attrs.x != null || attrs.y != null;
 }
 
 function coordinateAttr(attrs, name, fallback) {
@@ -891,6 +1174,9 @@ function substituteValue(value, scope) {
   if (isRefLiteral(value)) {
     return scope.has(value[REF_LITERAL]) ? scope.get(value[REF_LITERAL]) : value;
   }
+  if (isPointLiteral(value)) {
+    return pointLiteral(substitutePointExpression(value[POINT_LITERAL], (item) => substituteValue(item, scope)));
+  }
   if (isExpressionLiteral(value)) {
     const result = evaluateExpression(value[EXPRESSION_LITERAL], scope, { strict: false });
     return result.resolved ? result.value : value;
@@ -942,6 +1228,9 @@ function substitutePropValue(value, scope) {
       throw new GraphDslError(`Unknown shape prop "${name}"`);
     }
     return scope.get(name);
+  }
+  if (isPointLiteral(value)) {
+    return pointLiteral(substitutePointExpression(value[POINT_LITERAL], (item) => substitutePropValue(item, scope)));
   }
   if (isExpressionLiteral(value)) {
     return evaluateExpression(value[EXPRESSION_LITERAL], scope, { strict: true }).value;
@@ -1098,6 +1387,12 @@ function requiredAttr(element, name) {
     throw new GraphDslError(`<${element.name}> requires "${name}"`);
   }
   return element.attrs[name];
+}
+
+function endpointAttr(element, name) {
+  const value = requiredAttr(element, name);
+  if (typeof value === "string") return value;
+  throw new GraphDslError(`<${element.name}> "${name}" must be a quoted port address like "A.right"`);
 }
 
 function numberAttr(element, name, fallback) {
@@ -1367,6 +1662,15 @@ function parseBraceLiteral(source) {
   const quoted = value.match(/^(['"])(.*)\1$/);
   if (quoted) return quoted[2];
 
+  const pointExpression = parsePointExpression(value);
+  if (pointExpression) {
+    return pointLiteral(pointExpression);
+  }
+
+  if (isAddress(value)) {
+    return addressLiteral(value);
+  }
+
   if (looksLikeExpression(value)) {
     return expressionLiteral(value);
   }
@@ -1418,6 +1722,15 @@ function parseObjectValue(source) {
 
   const quoted = source.match(/^(['"])(.*)\1$/);
   if (quoted) return quoted[2];
+
+  const pointExpression = parsePointExpression(source);
+  if (pointExpression) {
+    return pointLiteral(pointExpression);
+  }
+
+  if (isAddress(source)) {
+    return addressLiteral(source);
+  }
 
   if (looksLikeExpression(source)) {
     return expressionLiteral(source);
@@ -1580,6 +1893,24 @@ function refLiteral(name) {
   return { [REF_LITERAL]: name };
 }
 
+function addressLiteral(name) {
+  return { [ADDRESS_LITERAL]: name };
+}
+
+function pointLiteral(expression) {
+  return { [POINT_LITERAL]: expression };
+}
+
+function substitutePointExpression(expression, substitute) {
+  return {
+    address: expression.address,
+    offsets: expression.offsets.map((offset) => ({
+      x: substitute(offset.x),
+      y: substitute(offset.y)
+    }))
+  };
+}
+
 function templateLiteral(source) {
   return { [TEMPLATE_LITERAL]: source };
 }
@@ -1592,6 +1923,14 @@ function isRefLiteral(value) {
   return value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, REF_LITERAL);
 }
 
+function isAddressLiteral(value) {
+  return value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, ADDRESS_LITERAL);
+}
+
+function isPointLiteral(value) {
+  return value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, POINT_LITERAL);
+}
+
 function isTemplateLiteral(value) {
   return value && typeof value === "object" && !Array.isArray(value) && Object.hasOwn(value, TEMPLATE_LITERAL);
 }
@@ -1602,6 +1941,91 @@ function isExpressionLiteral(value) {
 
 function looksLikeExpression(source) {
   return /[+\-*/()]/.test(source);
+}
+
+function isAddress(source) {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)+$/.test(source);
+}
+
+function parsePointExpression(source) {
+  const parts = splitPointExpression(source.trim());
+  if (parts.length < 3) return null;
+  const first = parts.shift();
+  if (!first || first.type !== "term" || !isAddress(first.value)) return null;
+
+  const offsets = [];
+  while (parts.length > 0) {
+    const operator = parts.shift();
+    const term = parts.shift();
+    if (!operator || operator.type !== "operator" || !term || term.type !== "term") {
+      throw new GraphDslError(`Invalid point expression "${source}"`);
+    }
+    const vector = parseVectorLiteral(term.value, source);
+    offsets.push({
+      x: operator.value === "-" ? -vector.x : vector.x,
+      y: operator.value === "-" ? -vector.y : vector.y
+    });
+  }
+
+  return { address: first.value, offsets };
+}
+
+function splitPointExpression(source) {
+  const parts = [];
+  let start = 0;
+  let depth = 0;
+  let quote = null;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quote) {
+      if (char === quote && source[index - 1] !== "\\") {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === "[") {
+      depth += 1;
+      continue;
+    }
+    if (char === "]") {
+      depth -= 1;
+      continue;
+    }
+    if ((char === "+" || char === "-") && depth === 0) {
+      const term = source.slice(start, index).trim();
+      if (term) parts.push({ type: "term", value: term });
+      parts.push({ type: "operator", value: char });
+      start = index + 1;
+    }
+  }
+
+  const tail = source.slice(start).trim();
+  if (tail) parts.push({ type: "term", value: tail });
+  return parts;
+}
+
+function parseVectorLiteral(source, expression) {
+  if (!/^\[.*\]$/.test(source)) {
+    throw new GraphDslError(`Point expression "${expression}" only supports vector offsets like [x, y]`);
+  }
+  const vector = parseArrayLiteral(source);
+  if (vector.length < 2) {
+    throw new GraphDslError(`Point expression "${expression}" requires [x, y] vectors`);
+  }
+  return { x: vector[0], y: vector[1] };
+}
+
+function pointExpressionNumber(value, expression) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    throw new GraphDslError(`Point expression for "${expression.address}" vector values must be numbers`);
+  }
+  return number;
 }
 
 function splitTopLevel(source, delimiter) {

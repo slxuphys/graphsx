@@ -123,6 +123,90 @@ test("passes custom shape props into template labels", () => {
   assert.equal(graph.nodes[1].children[0].attrs.label, "$A^{[1]}$");
 });
 
+test("supports shape variants with inherited children and overridden defaults", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="Gate" groupBox={false} flipX>
+        <Rect id="box" size={[60, 30]} label={gateLabel} />
+        <Port id="in" at={[0, 15]} angle={180} />
+        <Port id="out" at={[60, 15]} angle={0} />
+      </Shape>
+
+      <Shape id="GateDag" from="Gate" flipX={false} flipY gateLabel="$U^\\dagger$">
+        <Circle id="mark" at={[30, 15]} r={3} />
+        <Port id="tap" at={[30, 0]} angle={-90} />
+      </Shape>
+
+      <GateDag id="G" at={[100, 100]} />
+    </Graph>
+  `);
+
+  assert.equal(graph.shapes.GateDag.attrs.groupBox, false);
+  assert.equal(graph.shapes.GateDag.attrs.flipX, false);
+  assert.equal(graph.shapes.GateDag.attrs.flipY, true);
+  assert.deepEqual(graph.shapes.GateDag.nodes, ["box", "mark"]);
+  assert.deepEqual(graph.shapes.GateDag.legs, ["in", "out", "tap"]);
+  assert.equal(graph.nodes[0].attrs.flipX, false);
+  assert.equal(graph.nodes[0].attrs.flipY, true);
+  assert.equal(graph.nodes[0].children[0].attrs.label, "$U^\\dagger$");
+  assert.equal(graph.nodes[0].children[1].id, "G.mark");
+  assert.ok(graph.nodes[0].children[0].transform);
+});
+
+test("lets instances override derived shape defaults", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="Gate" groupBox={false} flipX>
+        <Rect id="box" size={[60, 30]} label={gateLabel} />
+      </Shape>
+      <Shape id="PlainGate" from="Gate" flipX={false} gateLabel="$V$" />
+      <PlainGate id="G" gateLabel="$W$" flipX />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[0].attrs.flipX, true);
+  assert.equal(graph.nodes[0].children[0].attrs.label, "$W$");
+});
+
+test("rejects derived shapes that duplicate inherited child ids", () => {
+  assert.throws(
+    () => parseGraph(`
+      <Graph>
+        <Shape id="Gate">
+          <Rect id="box" />
+        </Shape>
+        <Shape id="WideGate" from="Gate">
+          <Rect id="box" size={[100, 30]} />
+        </Shape>
+      </Graph>
+    `),
+    /Duplicate child node id "box" in shape "WideGate"/
+  );
+});
+
+test("rejects unknown parent shapes", () => {
+  assert.throws(
+    () => parseGraph(`
+      <Graph>
+        <Shape id="Gate" from="Missing" />
+      </Graph>
+    `),
+    /Unknown parent shape "Missing"/
+  );
+});
+
+test("rejects cyclic shape inheritance", () => {
+  assert.throws(
+    () => parseGraph(`
+      <Graph>
+        <Shape id="A" from="B" />
+        <Shape id="B" from="A" />
+      </Graph>
+    `),
+    /Cyclic shape inheritance/
+  );
+});
+
 test("keeps forwarded props on grouped shape instances", () => {
   const graph = parseGraph(`
     <Graph>
@@ -185,6 +269,83 @@ test("rejects unknown port addresses", () => {
       </Graph>
     `),
     /Unknown port address "B.missing"/
+  );
+});
+
+test("rejects duplicate shape ids", () => {
+  assert.throws(
+    () => parseGraph(`
+      <Graph>
+        <Shape id="Box" />
+        <Shape id="Box" />
+      </Graph>
+    `),
+    /Duplicate shape id "Box"/
+  );
+});
+
+test("rejects duplicate node ids", () => {
+  assert.throws(
+    () => parseGraph(`
+      <Graph>
+        <Rect id="A" />
+        <Circle id="A" at={[100, 0]} />
+      </Graph>
+    `),
+    /Duplicate node id "A"/
+  );
+});
+
+test("rejects duplicate generated node ids", () => {
+  assert.throws(
+    () => parseGraph(`
+      <Graph>
+        <Repeat count={2}>
+          <Rect id="A" />
+        </Repeat>
+      </Graph>
+    `),
+    /Duplicate node id "A"/
+  );
+});
+
+test("allows shape and instance ids to use separate pools", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="U" groupBox={false}>
+        <Rect id="box" />
+      </Shape>
+      <U id="U" />
+    </Graph>
+  `);
+
+  assert.equal(graph.shapes.U.id, "U");
+  assert.equal(graph.nodes[0].id, "U");
+});
+
+test("rejects duplicate port ids on one node", () => {
+  assert.throws(
+    () => parseGraph(`
+      <Graph>
+        <Rect id="A">
+          <Port id="p" left />
+          <Port id="p" right />
+        </Rect>
+      </Graph>
+    `),
+    /Duplicate port id "p" on "A"/
+  );
+});
+
+test("rejects duplicate path ids", () => {
+  assert.throws(
+    () => parseGraph(`
+      <Graph>
+        <Path id="wire" points={[[0, 0], [10, 0]]} />
+        <Path id="wire" points={[[0, 10], [10, 10]]} />
+      </Graph>
+    `),
+    /Duplicate path id "wire"/
   );
 });
 
@@ -284,6 +445,19 @@ test("preserves edge route options", () => {
 
   assert.equal(graph.edges[0].attrs.route, "orthogonal");
   assert.equal(graph.edges[0].attrs.stub, 40);
+});
+
+test("rejects braced port addresses on links", () => {
+  assert.throws(
+    () => parseGraph(`
+      <Graph>
+        <Rect id="A" />
+        <Rect id="B" at={[200, 0]} />
+        <Link id="e1" from={A.right} to={B.left} />
+      </Graph>
+    `),
+    /<Link> "from" must be a quoted port address like "A.right"/
+  );
 });
 
 test("preserves graph routing defaults", () => {
@@ -873,4 +1047,200 @@ test("rotates built-in node ports around the node center by default", () => {
   closeTo(rect.legs.top.y, 120);
   closeTo(rect.legs.top.angle, 0);
   assert.ok(rect.transform);
+});
+
+test("uses anchor as the transform origin when origin is omitted", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[100, 100]} size={[80, 40]} anchor="left" rotate={90} />
+    </Graph>
+  `);
+
+  const rect = graph.nodes[0];
+  closeTo(rect.legs.left.x, 100);
+  closeTo(rect.legs.left.y, 120);
+  closeTo(rect.legs.left.angle, 270);
+  closeTo(rect.legs.right.x, 100);
+  closeTo(rect.legs.right.y, 200);
+  closeTo(rect.legs.right.angle, 90);
+});
+
+test("uses explicit origin before anchor for transforms", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[100, 100]} size={[80, 40]} anchor="left" origin={[40, 20]} rotate={90} />
+    </Graph>
+  `);
+
+  const rect = graph.nodes[0];
+  closeTo(rect.legs.left.x, 140);
+  closeTo(rect.legs.left.y, 80);
+  closeTo(rect.legs.right.x, 140);
+  closeTo(rect.legs.right.y, 160);
+});
+
+test("uses custom shape public anchor as the transform origin", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="Pair" groupBox={false}>
+        <Rect id="body" at={[0, 0]} size={[80, 40]} />
+        <Port id="in" target="body.left" />
+        <Port id="out" target="body.right" />
+      </Shape>
+
+      <Pair id="P" at={[100, 100]} anchor="in" rotate={90} />
+    </Graph>
+  `);
+
+  closeTo(graph.nodes[0].legs.in.x, 100);
+  closeTo(graph.nodes[0].legs.in.y, 120);
+  closeTo(graph.nodes[0].legs.out.x, 100);
+  closeTo(graph.nodes[0].legs.out.y, 200);
+});
+
+test("keeps transformed child geometry aligned after anchored placement", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="U" groupBox={false}>
+        <Rect id="box" at={[0, 0]} size={[60, 30]} />
+        <Port id="A" at={[10, 30]} angle={90} />
+        <Port id="C" at={[20, 0]} angle={-90} />
+      </Shape>
+
+      <U id="u1" at={[10, 10]} />
+      <U id="u2" at={u1.C + [0, -40]} anchor="C" flipY />
+    </Graph>
+  `);
+
+  const u2 = graph.nodes[1];
+  const box = u2.children[0];
+  const topLeft = {
+    x: box.transform.a * box.x + box.transform.c * box.y + box.transform.e,
+    y: box.transform.b * box.x + box.transform.d * box.y + box.transform.f
+  };
+  const bottomLeft = {
+    x: box.transform.a * box.x + box.transform.c * (box.y + 30) + box.transform.e,
+    y: box.transform.b * box.x + box.transform.d * (box.y + 30) + box.transform.f
+  };
+
+  closeTo(u2.legs.C.x, 30);
+  closeTo(u2.legs.C.y, -30);
+  closeTo(u2.legs.A.x, 20);
+  closeTo(u2.legs.A.y, -60);
+  closeTo(topLeft.y, -30);
+  closeTo(bottomLeft.y, -60);
+});
+
+test("places a node origin at a referenced port", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[100, 100]} size={[80, 40]} />
+      <Circle id="B" at={A.right} r={10} />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[1].x, 180);
+  assert.equal(graph.nodes[1].y, 120);
+});
+
+test("places a node anchor port at a referenced port", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[100, 100]} size={[80, 40]} />
+      <Rect id="B" at={A.right} anchor="left" size={[60, 30]} />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[1].x, 180);
+  assert.equal(graph.nodes[1].y, 105);
+  assert.equal(graph.nodes[1].legs.left.x, graph.nodes[0].legs.right.x);
+  assert.equal(graph.nodes[1].legs.left.y, graph.nodes[0].legs.right.y);
+});
+
+test("uses transformed referenced ports for placement", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[100, 100]} size={[80, 40]} rotate={90} />
+      <Circle id="B" at={A.right} r={10} />
+    </Graph>
+  `);
+
+  closeTo(graph.nodes[0].legs.right.x, 140);
+  closeTo(graph.nodes[0].legs.right.y, 160);
+  closeTo(graph.nodes[1].x, 140);
+  closeTo(graph.nodes[1].y, 160);
+});
+
+test("places a node with vector arithmetic from a referenced port", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[100, 100]} size={[80, 40]} />
+      <Rect id="B" at={A.right + [20, 0]} anchor="left" size={[60, 30]} />
+      <Circle id="C" at={B.bottom - [0, 10]} r={5} />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[1].x, 200);
+  assert.equal(graph.nodes[1].y, 105);
+  assert.equal(graph.nodes[2].x, 230);
+  assert.equal(graph.nodes[2].y, 125);
+});
+
+test("supports arithmetic inside placement vectors", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[100, 100]} size={[80, 40]} />
+      <Repeat count={1} as="i">
+        <Rect id="B" at={A.right + [20 * (i + 1), 10 / 2]} anchor="left" size={[60, 30]} />
+      </Repeat>
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[1].x, 200);
+  assert.equal(graph.nodes[1].y, 110);
+});
+
+test("places custom shape public anchors at referenced ports", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Shape id="Pair" groupBox={false}>
+        <Rect id="body" at={[0, 0]} size={[80, 40]} />
+        <Port id="in" target="body.left" />
+        <Port id="out" target="body.right" />
+      </Shape>
+
+      <Pair id="P1" at={[100, 100]} />
+      <Pair id="P2" at={P1.out} anchor="in" />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[1].x, 180);
+  assert.equal(graph.nodes[1].y, 100);
+  assert.equal(graph.nodes[1].legs.in.x, graph.nodes[0].legs.out.x);
+  assert.equal(graph.nodes[1].legs.in.y, graph.nodes[0].legs.out.y);
+});
+
+test("resolves chained port placement in dependency order", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[100, 100]} size={[80, 40]} />
+      <Rect id="B" at={A.right} anchor="left" size={[80, 40]} />
+      <Rect id="C" at={B.right} anchor="left" size={[80, 40]} />
+    </Graph>
+  `);
+
+  assert.equal(graph.nodes[1].x, 180);
+  assert.equal(graph.nodes[2].x, 260);
+});
+
+test("rejects cyclic port placement", () => {
+  assert.throws(
+    () => parseGraph(`
+      <Graph>
+        <Rect id="A" at={B.right} anchor="left" />
+        <Rect id="B" at={A.right} anchor="left" />
+      </Graph>
+    `),
+    /Cyclic or unresolved placement reference/
+  );
 });
