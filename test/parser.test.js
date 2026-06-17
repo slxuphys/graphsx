@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { edgePathData, graphSummary, parseGraph, parseGraphs } from "../src/index.js";
+import { edgePathData, graphSummary, parseGraph, parseGraphs, renderGraph } from "../src/index.js";
 
 function closeTo(actual, expected, message = undefined) {
   assert.ok(Math.abs(actual - expected) < 1e-6, message ?? `${actual} should be close to ${expected}`);
@@ -15,7 +15,7 @@ test("parses nodes, legs, and edges", () => {
       <Circle id="B" at={[300, 100]} r={40}>
         <Port id="in" left />
       </Circle>
-      <Arrow from="A.out" to="B.in" />
+      <Link headArrow from="A.out" to="B.in" />
     </Graph>
   `);
 
@@ -29,7 +29,7 @@ test("parses nodes, legs, and edges", () => {
   assert.deepEqual(graph.edges[0], {
     from: "A.out",
     to: "B.in",
-    attrs: { from: "A.out", to: "B.in" }
+    attrs: { headArrow: true, from: "A.out", to: "B.in" }
   });
 });
 
@@ -51,7 +51,7 @@ test("ignores JSX and HTML comments", () => {
       <Rect id="A" />
       {/* edge note */}
       <Rect id="B" at={[200, 0]} />
-      <Arrow from="A.right" to="B.left" />
+      <Link headArrow from="A.right" to="B.left" />
     </Graph>
   `);
 
@@ -85,13 +85,13 @@ test("supports grouped shape definitions", () => {
         <Circ id="right" at={[160, 0]} r={25}>
           <Port id="in" left />
         </Circ>
-        <Arrow from="left.out" to="right.in" />
+        <Link headArrow from="left.out" to="right.in" />
         <Port id="in" target="left.in" left />
         <Port id="out" target="right.in" right />
       </Shape>
       <Pair id="P1" at={[100, 100]} />
       <Pair id="P2" at={[500, 100]} />
-      <Arrow from="P1.left.in" to="P2.in" />
+      <Link headArrow from="P1.left.in" to="P2.in" />
     </Graph>
   `);
 
@@ -257,6 +257,18 @@ test("rejects generic Node syntax", () => {
   );
 });
 
+test("rejects old edge and arrow connector tags", () => {
+  assert.throws(
+    () => parseGraph(`<Graph><Edge from="A.right" to="B.left" /></Graph>`),
+    /Unknown tag <Edge>/
+  );
+
+  assert.throws(
+    () => parseGraph(`<Graph><Arrow from="A.right" to="B.left" /></Graph>`),
+    /Unknown tag <Arrow>/
+  );
+});
+
 test("rejects unknown port addresses", () => {
   assert.throws(
     () => parseGraph(`
@@ -265,7 +277,7 @@ test("rejects unknown port addresses", () => {
           <Port id="out" right />
         </Rect>
         <Rect id="B" />
-        <Arrow from="A.out" to="B.missing" />
+        <Link headArrow from="A.out" to="B.missing" />
       </Graph>
     `),
     /Unknown port address "B.missing"/
@@ -380,8 +392,8 @@ test("adds default side ports for built-in shapes", () => {
     <Graph>
       <Rect id="A" at={[100, 100]} size={[120, 80]} />
       <Circle id="B" at={[320, 140]} r={40} />
-      <Arrow from="A.right" to="B.left" />
-      <Arrow from="A.top" to="B.bottom" />
+      <Link headArrow from="A.right" to="B.left" />
+      <Link headArrow from="A.top" to="B.bottom" />
     </Graph>
   `);
 
@@ -405,8 +417,8 @@ test("supports shapeless point nodes with default center ports", () => {
       <Anchor id="K" at={[360, 140]}>
         <Port id="in" at={[0, 0]} angle={180} />
       </Anchor>
-      <Arrow from="A.right" to="J.center" />
-      <Arrow from="J.center" to="K.in" />
+      <Link headArrow from="A.right" to="J.center" />
+      <Link headArrow from="J.center" to="K.in" />
     </Graph>
   `);
 
@@ -439,7 +451,7 @@ test("preserves edge route options", () => {
     <Graph>
       <Rect id="A" />
       <Rect id="B" at={[200, 0]} />
-      <Arrow from="A.right" to="B.left" route="orthogonal" stub={40} />
+      <Link headArrow from="A.right" to="B.left" route="orthogonal" stub={40} />
     </Graph>
   `);
 
@@ -465,7 +477,7 @@ test("preserves graph routing defaults", () => {
     <Graph route="auto" grid={20} padding={16}>
       <Rect id="A" />
       <Rect id="B" at={[200, 0]} />
-      <Arrow from="A.right" to="B.left" />
+      <Link headArrow from="A.right" to="B.left" />
     </Graph>
   `);
 
@@ -480,8 +492,8 @@ test("lays out dag siblings to the right by default", () => {
       <Rect id="A" size={[100, 60]} />
       <Rect id="B" size={[100, 60]} />
       <Rect id="C" size={[100, 60]} />
-      <Arrow from="A.right" to="B.left" />
-      <Arrow from="A.right" to="C.left" />
+      <Link headArrow from="A.right" to="B.left" />
+      <Link headArrow from="A.right" to="C.left" />
     </Graph>
   `);
 
@@ -501,7 +513,7 @@ test("lays out nodes in source order for row layout", () => {
       <Rect id="A" size={[100, 60]} />
       <Rect id="B" at={[500, 500]} size={[80, 40]} />
       <Rect id="C" size={[60, 40]} />
-      <Arrow from="A.right" to="C.left" />
+      <Link headArrow from="A.right" to="C.left" />
     </Graph>
   `);
 
@@ -518,7 +530,7 @@ test("summarizes rendered graph model", () => {
     <Graph>
       <Rect id="A" />
       <Rect id="B" at={[200, 0]} />
-      <Arrow from="A.right" to="B.left" />
+      <Link headArrow from="A.right" to="B.left" />
     </Graph>
   `);
 
@@ -526,7 +538,7 @@ test("summarizes rendered graph model", () => {
     nodeCount: 2,
     edgeCount: 1,
     pathCount: 0,
-    text: "2 nodes, 1 edge"
+    text: "2 nodes, 1 link"
   });
 });
 
@@ -557,7 +569,7 @@ test("generates obstacle avoiding auto edge path data", () => {
       <Rect id="A" at={[0, 40]} size={[60, 40]} />
       <Rect id="Block" at={[100, 20]} size={[80, 80]} />
       <Rect id="B" at={[240, 40]} size={[60, 40]} />
-      <Arrow from="A.right" to="B.left" route="auto" grid={20} padding={0} stub={20} />
+      <Link headArrow from="A.right" to="B.left" route="auto" grid={20} padding={0} stub={20} />
     </Graph>
   `);
   const nodes = graph.nodes;
@@ -576,7 +588,7 @@ test("keeps auto edge path segments orthogonal after grid snapping", () => {
       <Rect id="A" at={[60, 130]} size={[90, 60]} />
       <Rect id="Block" at={[210, 85]} size={[100, 150]} />
       <Rect id="B" at={[400, 130]} size={[90, 60]} />
-      <Arrow from="A.right" to="B.left" route="auto" grid={20} padding={18} stub={32} />
+      <Link headArrow from="A.right" to="B.left" route="auto" grid={20} padding={18} stub={32} />
     </Graph>
   `);
   const edge = graph.edges[0];
@@ -601,7 +613,7 @@ test("auto route avoids the target shape for same-side ports", () => {
     <Graph>
       <Rect id="A" size={[100, 60]} at={[0, 0]} />
       <Rect id="B" size={[100, 60]} at={[200, 0]} style={{ opacity: 0.5 }} />
-      <Edge from="A.right" to="B.right" route="auto" grid={20} padding={20} />
+      <Link from="A.right" to="B.right" route="auto" grid={20} padding={20} />
     </Graph>
   `);
   const edge = graph.edges[0];
@@ -640,7 +652,7 @@ test("parses style objects", () => {
       <Rect id="B">
         <Port id="in" left />
       </Rect>
-      <Arrow from="A.out" to="B.in" style={{ stroke: "#7c3aed", strokeWidth: 4 }} />
+      <Link headArrow from="A.out" to="B.in" style={{ stroke: "#7c3aed", strokeWidth: 4 }} />
     </Graph>
   `);
 
@@ -668,7 +680,7 @@ test("resolves reusable style tags", () => {
       <Rect id="B">
         <Port id="in" left />
       </Rect>
-      <Arrow from="A.out" to="B.in" useStyle="softArrow" />
+      <Link headArrow from="A.out" to="B.in" useStyle="softArrow" />
     </Graph>
   `);
 
@@ -692,6 +704,48 @@ test("resolves reusable style tags", () => {
     strokeWidth: 3,
     opacity: 0.6
   });
+});
+
+test("renders opt-in arrow markers for links and paths", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[0, 0]} size={[80, 40]} />
+      <Rect id="B" at={[160, 0]} size={[80, 40]} />
+      <Link from="A.right" to="B.left" />
+      <Link from="A.bottom" to="B.bottom" headArrow tailArrow />
+      <Path id="p" points={[[0, 90], [160, 90]]} headArrow arrowSize={8} />
+    </Graph>
+  `);
+  const calls = [];
+  const documentRef = {
+    createElementNS(_namespace, tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    },
+    createElement(tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    }
+  };
+  const svg = createMockNode("svg");
+  svg.ownerDocument = documentRef;
+
+  renderGraph(svg, graph, { document: documentRef });
+
+  const edgePaths = calls.filter((node) => node.tag === "path" && node.attrs.class === "edge");
+  const plainEdge = edgePaths.find((node) => !node.attrs["marker-start"] && !node.attrs["marker-end"]);
+  const arrowEdge = edgePaths.find((node) => node.attrs["marker-start"] || node.attrs["marker-end"]);
+  const explicitPath = calls.find((node) => node.tag === "path" && node.attrs.class === "path");
+
+  assert.ok(plainEdge);
+  assert.equal(arrowEdge.attrs["marker-start"], "url(#graphsx-arrow-tail)");
+  assert.equal(arrowEdge.attrs["marker-end"], "url(#graphsx-arrow-head)");
+  assert.equal(explicitPath.attrs["marker-end"], "url(#graphsx-arrow-head-8)");
+  assert.ok(calls.some((node) => node.tag === "marker" && node.attrs.id === "graphsx-arrow-head"));
+  assert.ok(calls.some((node) => node.tag === "marker" && node.attrs.id === "graphsx-arrow-tail"));
+  assert.ok(calls.some((node) => node.tag === "marker" && node.attrs.id === "graphsx-arrow-head-8" && node.attrs.markerWidth === 8));
 });
 
 test("parses explicit paths with points", () => {
@@ -754,7 +808,7 @@ test("expands repeated nodes and edges", () => {
         </Rect>
       </Repeat>
       <Repeat count={3}>
-        <Arrow from="box{i}.out" to="box{i+1}.in" />
+        <Link headArrow from="box{i}.out" to="box{i+1}.in" />
       </Repeat>
     </Graph>
   `);
@@ -778,7 +832,7 @@ test("expands repeat variables in backtick templates", () => {
         </Rect>
       </Repeat>
       <Repeat count={3} as="i">
-        <Arrow from={\`box\${i}.out\`} to={\`box\${i+1}.in\`} />
+        <Link headArrow from={\`box\${i}.out\`} to={\`box\${i+1}.in\`} />
       </Repeat>
     </Graph>
   `);
@@ -862,14 +916,14 @@ test("expands repeats inside custom shapes", () => {
           </Rect>
         </Repeat>
         <Repeat count={2} as="i">
-          <Arrow from="cell-{i}.right" to="cell-{i+1}.left" />
+          <Link headArrow from="cell-{i}.right" to="cell-{i+1}.left" />
         </Repeat>
         <Port id="in" target="cell-0.left" />
         <Port id="out" target="cell-2.right" />
       </Shape>
       <Row id="R1" at={[100, 100]} />
       <Row id="R2" at={[100, 220]} />
-      <Arrow from="R1.out" to="R2.in" />
+      <Link headArrow from="R1.out" to="R2.in" />
     </Graph>
   `);
 
@@ -949,7 +1003,7 @@ test("evaluates arithmetic expressions in custom shape props", () => {
 
       <EPR id="P1" at={[10, 10]} L={100} />
       <EPR id="P2" at={[200, 10]} L={200} />
-      <Edge from="P1.C.top" to="P2.C.top" route="auto" />
+      <Link from="P1.C.top" to="P2.C.top" route="auto" />
     </Graph>
   `);
 
@@ -1244,3 +1298,24 @@ test("rejects cyclic port placement", () => {
     /Cyclic or unresolved placement reference/
   );
 });
+
+function createMockNode(tag) {
+  return {
+    tag,
+    attrs: {},
+    children: [],
+    style: {},
+    setAttribute(name, value) {
+      this.attrs[name] = value;
+    },
+    append(...children) {
+      this.children.push(...children);
+    },
+    replaceChildren(...children) {
+      this.children = children;
+    },
+    set textContent(value) {
+      this.text = value;
+    }
+  };
+}

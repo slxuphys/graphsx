@@ -145,6 +145,34 @@ test("generates plot data from math expressions", () => {
   assert.deepEqual(plot.lines[0].points[2], plot.data.sin[2]);
 });
 
+test("supports animated plot data through declared params", () => {
+  const plot = parsePlot(`
+    <Plot width={200} height={120} padding={10} xDomain={[0, 1]} yDomain={[-1, 1]}>
+      <Data id="wave" x={[0]} y="sin(x - t)" params={{ t: 0 }} />
+      <Line data="wave" animate={{ t: [0, pi], duration: 2, loop: false }} />
+    </Plot>
+  `);
+  const calls = [];
+  const documentRef = {
+    createElementNS(_namespace, tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    }
+  };
+  const svg = createMockNode("svg");
+  svg.ownerDocument = documentRef;
+
+  renderPlot(svg, plot, { document: documentRef, frame: { time: 1 } });
+
+  const path = calls.find((node) => node.tag === "path" && node.attrs.class === "plot-line");
+
+  assert.equal(plot.data.wave[0].y, 0);
+  assert.equal(Math.round(plot.lines[0].attrs.animate.t[1] * 1000) / 1000, 3.142);
+  assert.match(path.attrs.d, /L|M/);
+  assert.match(path.attrs.d, /110/);
+});
+
 test("rejects invalid generated plot data expressions", () => {
   assert.throws(
     () => parsePlot(`
@@ -162,6 +190,25 @@ test("rejects invalid generated plot data expressions", () => {
       </Plot>
     `),
     /Unknown math function "unsafe"/
+  );
+
+  assert.throws(
+    () => parsePlot(`
+      <Plot>
+        <Data id="wave" y="sin(x - t)" domain={[0, 1]} />
+      </Plot>
+    `),
+    /Unknown variable "t"/
+  );
+
+  assert.throws(
+    () => parsePlot(`
+      <Plot>
+        <Data id="wave" y="sin(x - t)" params={{ t: 0 }} domain={[0, 1]} />
+        <Line data="wave" animate={{ phase: [0, 1] }} />
+      </Plot>
+    `),
+    /Animation variable "phase" is not declared/
   );
 });
 

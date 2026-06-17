@@ -53,11 +53,11 @@ export function buildPlotModel(plotElement) {
   assertKnownPlotChildren(plotElement);
 
   const styles = buildStyles(plotElement.children.filter((child) => STYLE_TAGS.has(child.name)));
-  const data = buildData(plotElement.children.filter((child) => DATA_TAGS.has(child.name)));
+  const dataRecords = buildData(plotElement.children.filter((child) => DATA_TAGS.has(child.name)));
   const axes = plotElement.children.filter((child) => AXIS_TAGS.has(child.name)).map((child) => buildAxis(child, styles));
-  const curves = plotElement.children.filter((child) => CURVE_TAGS.has(child.name)).map((child) => buildCurve(child, styles, data));
-  const lines = plotElement.children.filter((child) => LINE_TAGS.has(child.name)).map((child) => buildLine(child, styles, data));
-  const marks = plotElement.children.filter((child) => POINT_TAGS.has(child.name)).map((child) => buildMark(child, styles, data));
+  const curves = plotElement.children.filter((child) => CURVE_TAGS.has(child.name)).map((child) => buildCurve(child, styles, dataRecords));
+  const lines = plotElement.children.filter((child) => LINE_TAGS.has(child.name)).map((child) => buildLine(child, styles, dataRecords));
+  const marks = plotElement.children.filter((child) => POINT_TAGS.has(child.name)).map((child) => buildMark(child, styles, dataRecords));
   const labels = plotElement.children.filter((child) => TEXT_TAGS.has(child.name)).map((child) => buildText(child, styles));
   const legends = plotElement.children.filter((child) => LEGEND_TAGS.has(child.name)).map((child) => buildLegend(child, styles));
 
@@ -65,7 +65,8 @@ export function buildPlotModel(plotElement) {
     type: "plot",
     attrs: normalizePlotAttrs(plotElement.attrs),
     styles: Object.fromEntries(styles),
-    data: Object.fromEntries(data),
+    data: Object.fromEntries([...dataRecords].map(([id, record]) => [id, record.points])),
+    dataSources: Object.fromEntries(dataRecords),
     axes,
     curves,
     lines,
@@ -126,43 +127,57 @@ function normalizeTickAttrs(attrs, elementName) {
 
 function buildCurve(curveElement, styles, data) {
   const points = resolvePoints(curveElement, data);
+  const dataId = dataIdAttr(curveElement);
+  validateSeriesAnimation(curveElement, dataId, data);
+  const attrs = resolveStyledAttrs(curveElement.attrs, styles);
   return {
     id: curveElement.attrs.id,
+    dataId,
     points,
-    attrs: resolveStyledAttrs(curveElement.attrs, styles)
+    attrs: normalizeSeriesAttrs(attrs, curveElement.name)
   };
 }
 
 function buildLine(lineElement, styles, data) {
   if (hasPoints(lineElement) || lineElement.attrs.data) {
+    const dataId = dataIdAttr(lineElement);
+    validateSeriesAnimation(lineElement, dataId, data);
+    const attrs = resolveStyledAttrs(lineElement.attrs, styles);
     return {
       id: lineElement.attrs.id,
+      dataId,
       points: resolvePoints(lineElement, data),
-      attrs: resolveStyledAttrs(lineElement.attrs, styles)
+      attrs: normalizeSeriesAttrs(attrs, lineElement.name)
     };
   }
 
+  const attrs = resolveStyledAttrs(lineElement.attrs, styles);
   return {
     id: lineElement.attrs.id,
     from: pointAttr(lineElement, "from"),
     to: pointAttr(lineElement, "to"),
-    attrs: resolveStyledAttrs(lineElement.attrs, styles)
+    attrs: normalizeSeriesAttrs(attrs, lineElement.name)
   };
 }
 
 function buildMark(markElement, styles, data) {
   if (hasPoints(markElement) || markElement.attrs.data) {
+    const dataId = dataIdAttr(markElement);
+    validateSeriesAnimation(markElement, dataId, data);
+    const attrs = resolveStyledAttrs(markElement.attrs, styles);
     return {
       id: markElement.attrs.id,
+      dataId,
       points: resolvePoints(markElement, data),
-      attrs: resolveStyledAttrs(markElement.attrs, styles)
+      attrs: normalizeSeriesAttrs(attrs, markElement.name)
     };
   }
 
+  const attrs = resolveStyledAttrs(markElement.attrs, styles);
   return {
     id: markElement.attrs.id,
     at: pointAttr(markElement, "at"),
-    attrs: resolveStyledAttrs(markElement.attrs, styles)
+    attrs: normalizeSeriesAttrs(attrs, markElement.name)
   };
 }
 
@@ -188,11 +203,11 @@ function buildLegend(legendElement, styles) {
 
 function resolvePoints(element, data = new Map()) {
   if (element.attrs.data) {
-    const points = data.get(element.attrs.data);
-    if (!points) {
+    const record = data.get(element.attrs.data);
+    if (!record) {
       throw new GraphDslError(`Unknown data "${element.attrs.data}"`);
     }
-    return points.map((point) => ({ ...point }));
+    return clonePoints(record.points);
   }
 
   if (Array.isArray(element.attrs.points)) {
@@ -267,6 +282,39 @@ function generatePointsFromDomain(element) {
     return {
       x,
       y: evaluateMathExpression(expression, new Map([...params, [variable, x]]), `<${element.name}> y`)
+    };
+  });
+}
+
+export function regeneratePlotData(source, overrides = {}) {
+  if (!source?.generated) {
+    throw new GraphDslError(`Only generated <Data> can be animated`);
+  }
+  const params = new Map(Object.entries(source.params ?? {}));
+  for (const [key, value] of Object.entries(overrides ?? {})) {
+    if (!params.has(key)) {
+      throw new GraphDslError(`Animation variable "${key}" is not declared in <Data id="${source.id}"> params`);
+    }
+    params.set(key, numberValue(value, `animation param "${key}"`));
+  }
+
+  if (Array.isArray(source.x)) {
+    return source.x.map((rawX) => {
+      const x = numberValue(rawX, `${source.id} x`);
+      return {
+        x,
+        y: evaluateMathExpression(source.expression, new Map([...params, [source.variable, x]]), `<Data id="${source.id}"> y`)
+      };
+    });
+  }
+
+  const [min, max] = source.domain;
+  const step = source.samples === 1 ? 0 : (max - min) / (source.samples - 1);
+  return Array.from({ length: source.samples }, (_unused, index) => {
+    const x = min + step * index;
+    return {
+      x,
+      y: evaluateMathExpression(source.expression, new Map([...params, [source.variable, x]]), `<Data id="${source.id}"> y`)
     };
   });
 }
@@ -521,9 +569,85 @@ function buildData(dataElements) {
     if (data.has(id)) {
       throw new GraphDslError(`Duplicate data id "${id}"`);
     }
-    data.set(id, resolvePoints(element));
+    data.set(id, buildDataRecord(element, id));
   }
   return data;
+}
+
+function buildDataRecord(element, id) {
+  if (Array.isArray(element.attrs.x) && isMathSource(element.attrs.y)) {
+    const params = Object.fromEntries(paramsScope(element));
+    return {
+      id,
+      generated: true,
+      variable: String(element.attrs.var ?? "x"),
+      expression: String(element.attrs.y),
+      params,
+      x: element.attrs.x.slice(),
+      points: generatePointsFromX(element)
+    };
+  }
+
+  if (isMathSource(element.attrs.y) && !Array.isArray(element.attrs.y)) {
+    const domain = numericPair(element.attrs.domain, `<${element.name}> domain`);
+    const samples = Math.max(2, Math.floor(Number(element.attrs.samples ?? 100)));
+    if (!Number.isFinite(samples)) {
+      throw new GraphDslError(`<${element.name}> samples must be a finite number`);
+    }
+    const params = Object.fromEntries(paramsScope(element));
+    return {
+      id,
+      generated: true,
+      variable: String(element.attrs.var ?? "x"),
+      expression: String(element.attrs.y),
+      params,
+      domain,
+      samples,
+      points: generatePointsFromDomain(element)
+    };
+  }
+
+  return {
+    id,
+    generated: false,
+    points: resolvePoints(element)
+  };
+}
+
+function validateSeriesAnimation(element, dataId, data) {
+  const animate = element.attrs.animate;
+  if (animate == null) return;
+  if (!animate || typeof animate !== "object" || Array.isArray(animate)) {
+    throw new GraphDslError(`<${element.name}> animate must be an object`);
+  }
+  if (!dataId) {
+    throw new GraphDslError(`<${element.name}> animate requires data="..."`);
+  }
+  const record = data.get(dataId);
+  if (!record?.generated) {
+    throw new GraphDslError(`<${element.name}> animate requires generated <Data>`);
+  }
+  for (const key of Object.keys(animationVariableRanges(animate))) {
+    if (!Object.hasOwn(record.params ?? {}, key)) {
+      throw new GraphDslError(`Animation variable "${key}" is not declared in <Data id="${dataId}"> params`);
+    }
+  }
+}
+
+function animationVariableRanges(animate) {
+  return Object.fromEntries(Object.entries(animate).filter(([key, value]) => (
+    !ANIMATION_SETTING_KEYS.has(key) && Array.isArray(value)
+  )));
+}
+
+const ANIMATION_SETTING_KEYS = new Set(["duration", "loop"]);
+
+function dataIdAttr(element) {
+  return element.attrs.data == null ? null : String(element.attrs.data);
+}
+
+function clonePoints(points) {
+  return points.map((point) => ({ ...point }));
 }
 
 function resolveStyledAttrs(attrs, styles) {
@@ -539,6 +663,30 @@ function resolveStyledAttrs(attrs, styles) {
     resolved.style = { ...direct, ...(attrs.style ?? {}) };
   }
   return resolved;
+}
+
+function normalizeSeriesAttrs(attrs, elementName) {
+  if (attrs.animate == null) return attrs;
+  return {
+    ...attrs,
+    animate: normalizeAnimateAttrs(attrs.animate, elementName)
+  };
+}
+
+function normalizeAnimateAttrs(animate, elementName) {
+  if (!animate || typeof animate !== "object" || Array.isArray(animate)) {
+    throw new GraphDslError(`<${elementName}> animate must be an object`);
+  }
+  const normalized = { ...animate };
+  if (normalized.duration != null) {
+    normalized.duration = numberValue(normalized.duration, `<${elementName}> animate duration`);
+  }
+  for (const [key, value] of Object.entries(normalized)) {
+    if (ANIMATION_SETTING_KEYS.has(key)) continue;
+    if (!Array.isArray(value)) continue;
+    normalized[key] = numericPair(value, `<${elementName}> animate ${key}`);
+  }
+  return normalized;
 }
 
 function directStyleAttrs(attrs) {

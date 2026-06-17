@@ -35,7 +35,7 @@ const graphExamples = [
     <Port id="in" left />
   </Circle>
 
-  <Arrow from="A.out" to="B.in" useStyle="violetEdge" />
+  <Link headArrow from="A.out" to="B.in" useStyle="violetEdge" />
 </Graph>`
   },
   {
@@ -60,11 +60,11 @@ const graphExamples = [
   <Repeat count={6} as="i" step={[110, 0]}>
     <Tensor id={\`A\${i}\`} at={[100, 100]} site={i} />
     <Point id={\`p\${i}\`} at={[128, 210]} />
-    <Edge from={\`A\${i}.phys\`} to={\`p\${i}.center\`} useStyle="wire" />
+    <Link from={\`A\${i}.phys\`} to={\`p\${i}.center\`} useStyle="wire" />
   </Repeat>
 
   <Repeat count={5} as="i">
-    <Edge from={\`A\${i}.right\`} to={\`A\${i+1}.left\`} useStyle="wire" />
+    <Link from={\`A\${i}.right\`} to={\`A\${i+1}.left\`} useStyle="wire" />
   </Repeat>
 </Graph>`
   },
@@ -78,7 +78,7 @@ const graphExamples = [
   <Rect id="Block" at={[230, 95]} size={[110, 170]} label="block" useStyle="block" />
   <Rect id="B" at={[470, 150]} size={[100, 60]} label="B" />
 
-  <Edge from="A.right" to="B.left" useStyle="edge" />
+  <Link from="A.right" to="B.left" useStyle="edge" />
 </Graph>`
   },
   {
@@ -89,10 +89,10 @@ const graphExamples = [
   <Rect id="C" size={[100, 60]} label="C" />
   <Rect id="D" size={[100, 60]} label="D" />
 
-  <Arrow from="A.right" to="B.left" />
-  <Arrow from="A.right" to="C.left" />
-  <Arrow from="B.right" to="D.left" />
-  <Arrow from="C.right" to="D.left" />
+  <Link headArrow from="A.right" to="B.left" />
+  <Link headArrow from="A.right" to="C.left" />
+  <Link headArrow from="B.right" to="D.left" />
+  <Link headArrow from="C.right" to="D.left" />
 </Graph>`
   },
   {
@@ -104,7 +104,7 @@ const graphExamples = [
   <Shape id="Pair" groupBox={true}>
     <Rect id="left" at={[0, 0]} size={[80, 50]} label={\`$L_{\${k}}$\`} useStyle="leftBox" />
     <Circle id="right" at={[170, 25]} r={28} label={\`$R_{\${k}}$\`} useStyle="rightBox" />
-    <Arrow from="left.right" to="right.left" />
+    <Link headArrow from="left.right" to="right.left" />
     <Port id="in" target="left.left" />
     <Port id="out" target="right.right" />
   </Shape>
@@ -112,7 +112,7 @@ const graphExamples = [
   <Pair id="P0" at={[90, 120]} k={0} label="visible group box" />
   <Pair id="P1" at={[430, 120]} k={1} groupBox={false} />
 
-  <Arrow from="P0.out" to="P1.in" />
+  <Link headArrow from="P0.out" to="P1.in" />
 </Graph>`
   }
 ];
@@ -144,11 +144,11 @@ This Markdown preview renders \`graphsx\` fences inline, so the code block can l
   <Repeat count={5} as="i" step={[105, 0]}>
     <Tensor id={\`A\${i}\`} at={[90, 90]} site={i} />
     <Point id={\`p\${i}\`} at={[117, 190]} />
-    <Edge from={\`A\${i}.phys\`} to={\`p\${i}.center\`} useStyle="wire" />
+    <Link from={\`A\${i}.phys\`} to={\`p\${i}.center\`} useStyle="wire" />
   </Repeat>
 
   <Repeat count={4} as="i">
-    <Edge from={\`A\${i}.right\`} to={\`A\${i+1}.left\`} useStyle="wire" />
+    <Link from={\`A\${i}.right\`} to={\`A\${i+1}.left\`} useStyle="wire" />
   </Repeat>
 </Graph>
 \`\`\`
@@ -164,8 +164,8 @@ The rest is ordinary Markdown, which means this can eventually plug into a note 
   <Rect id="A" size={[90, 52]} label="A" />
   <Rect id="B" size={[90, 52]} label="B" />
   <Rect id="C" size={[90, 52]} label="C" />
-  <Arrow from="A.right" to="B.left" />
-  <Arrow from="A.right" to="C.left" />
+  <Link headArrow from="A.right" to="B.left" />
+  <Link headArrow from="A.right" to="C.left" />
 </Graph>
 \`\`\`
 
@@ -180,7 +180,7 @@ console.log("not GraphSX");
   <Rect id="A" at={[60, 120]} size={[100, 56]} label="A" />
   <Rect id="Block" at={[230, 80]} size={[100, 150]} label="block" style={{ fill: "#f1f3f5", stroke: "#9aa3af" }} />
   <Rect id="B" at={[450, 120]} size={[100, 56]} label="B" />
-  <Edge from="A.right" to="B.left" />
+  <Link from="A.right" to="B.left" />
 </Graph>
 \`\`\``
   },
@@ -234,11 +234,11 @@ An MPS represents a vector by chaining local tensors. The horizontal wires are c
   <Repeat count={5} as="i" step={[104, 0]}>
     <MpsTensor id={\`A\${i}\`} at={[80, 70]} site={i} />
     <Point id={\`p\${i}\`} at={[108, 166]} />
-    <Edge from={\`A\${i}.phys\`} to={\`p\${i}.center\`} useStyle="wire" />
+    <Link from={\`A\${i}.phys\`} to={\`p\${i}.center\`} useStyle="wire" />
   </Repeat>
 
   <Repeat count={4} as="i">
-    <Edge from={\`A\${i}.right\`} to={\`A\${i+1}.left\`} useStyle="wire" />
+    <Link from={\`A\${i}.right\`} to={\`A\${i+1}.left\`} useStyle="wire" />
   </Repeat>
 </Graph>
 \`\`\`
@@ -253,12 +253,12 @@ An MPO represents an operator. Each site tensor carries two physical legs: an in
     <MpoTensor id={\`W\${i}\`} at={[80, 96]} site={i} />
     <Point id={\`in\${i}\`} at={[111, 38]} />
     <Point id={\`out\${i}\`} at={[111, 205]} />
-    <Edge from={\`in\${i}.center\`} to={\`W\${i}.in\`} useStyle="wire" />
-    <Edge from={\`W\${i}.out\`} to={\`out\${i}.center\`} useStyle="wire" />
+    <Link from={\`in\${i}.center\`} to={\`W\${i}.in\`} useStyle="wire" />
+    <Link from={\`W\${i}.out\`} to={\`out\${i}.center\`} useStyle="wire" />
   </Repeat>
 
   <Repeat count={4} as="i">
-    <Edge from={\`W\${i}.right\`} to={\`W\${i+1}.left\`} useStyle="wire" />
+    <Link from={\`W\${i}.right\`} to={\`W\${i+1}.left\`} useStyle="wire" />
   </Repeat>
 </Graph>
 \`\`\`
@@ -320,23 +320,23 @@ Each horizontal line is a qubit worldline. The rectangular blocks are two-qubit 
   </Repeat>
 
   <Repeat count={2} as="pair">
-    <Edge from={\`pair\${pair}topIn.center\`} to={\`E0_\${pair}.q0l\`} useStyle="wire" />
-    <Edge from={\`pair\${pair}botIn.center\`} to={\`E0_\${pair}.q1l\`} useStyle="wire" />
-    <Edge from={\`E2_\${pair}.q0r\`} to={\`pair\${pair}topOut.center\`} useStyle="wire" />
-    <Edge from={\`E2_\${pair}.q1r\`} to={\`pair\${pair}botOut.center\`} useStyle="wire" />
+    <Link from={\`pair\${pair}topIn.center\`} to={\`E0_\${pair}.q0l\`} useStyle="wire" />
+    <Link from={\`pair\${pair}botIn.center\`} to={\`E0_\${pair}.q1l\`} useStyle="wire" />
+    <Link from={\`E2_\${pair}.q0r\`} to={\`pair\${pair}topOut.center\`} useStyle="wire" />
+    <Link from={\`E2_\${pair}.q1r\`} to={\`pair\${pair}botOut.center\`} useStyle="wire" />
   </Repeat>
 
   <Repeat count={2} as="col">
-    <Edge from={\`E\${col}_0.q0r\`} to={\`E\${col+1}_0.q0l\`} useStyle="wire" />
-    <Edge from={\`E\${col}_1.q1r\`} to={\`E\${col+1}_1.q1l\`} useStyle="wire" />
+    <Link from={\`E\${col}_0.q0r\`} to={\`E\${col+1}_0.q0l\`} useStyle="wire" />
+    <Link from={\`E\${col}_1.q1r\`} to={\`E\${col+1}_1.q1l\`} useStyle="wire" />
   </Repeat>
 
   <Repeat count={2} as="col">
     <Repeat count={1} as="pair">
-      <Edge from={\`E\${col}_\${pair}.q1r\`} to={\`O\${col}_\${pair}.q0l\`} useStyle="wire" />
-      <Edge from={\`E\${col}_\${pair+1}.q0r\`} to={\`O\${col}_\${pair}.q1l\`} useStyle="wire" />
-      <Edge from={\`O\${col}_\${pair}.q0r\`} to={\`E\${col+1}_\${pair}.q1l\`} useStyle="wire" />
-      <Edge from={\`O\${col}_\${pair}.q1r\`} to={\`E\${col+1}_\${pair+1}.q0l\`} useStyle="wire" />
+      <Link from={\`E\${col}_\${pair}.q1r\`} to={\`O\${col}_\${pair}.q0l\`} useStyle="wire" />
+      <Link from={\`E\${col}_\${pair+1}.q0r\`} to={\`O\${col}_\${pair}.q1l\`} useStyle="wire" />
+      <Link from={\`O\${col}_\${pair}.q0r\`} to={\`E\${col+1}_\${pair}.q1l\`} useStyle="wire" />
+      <Link from={\`O\${col}_\${pair}.q1r\`} to={\`E\${col+1}_\${pair+1}.q0l\`} useStyle="wire" />
     </Repeat>
   </Repeat>
 </Graph>
@@ -408,6 +408,7 @@ let renderedSize = { width: 720, height: 520 };
 let panStart = null;
 let editor = null;
 let applyingEditorChange = false;
+let animationFrameId = null;
 let currentMode = loadStoredValue("mode", "graph");
 let syntaxCollapsed = loadStoredValue("syntaxCollapsed", "false") === "true";
 const modeContent = {
@@ -561,6 +562,7 @@ render();
 fitToView();
 
 function render() {
+  stopAnimation();
   if (currentMode === "markdown") {
     renderMarkdownMode();
     return;
@@ -601,6 +603,9 @@ function renderGraphMode() {
     status.classList.remove("error");
     renderTitle.textContent = graph.type === "plot" ? "Rendered Plot" : modes.graph.title;
     summary.textContent = graphSXDocumentSummary(graph).text;
+    if (hasAnimation(graph)) {
+      startAnimation(graph);
+    }
   } catch (error) {
     if (parseTimerActive) {
       console.timeEnd(parseTimingLabel);
@@ -613,6 +618,31 @@ function renderGraphMode() {
   } finally {
     console.timeEnd(timingLabel);
   }
+}
+
+function startAnimation(graph) {
+  const startedAt = performance.now();
+  const step = (now) => {
+    renderedSize = renderGraphSXDocument(svg, graph, {
+      katex,
+      frame: { time: (now - startedAt) / 1000 }
+    });
+    applyViewport();
+    animationFrameId = requestAnimationFrame(step);
+  };
+  animationFrameId = requestAnimationFrame(step);
+}
+
+function stopAnimation() {
+  if (animationFrameId == null) return;
+  cancelAnimationFrame(animationFrameId);
+  animationFrameId = null;
+}
+
+function hasAnimation(documentModel) {
+  if (documentModel.type !== "plot") return false;
+  return [...documentModel.lines, ...documentModel.curves, ...documentModel.marks]
+    .some((series) => series.attrs.animate);
 }
 
 function renderMarkdownMode() {

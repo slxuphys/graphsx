@@ -73,7 +73,7 @@ test("parses graph fences with multiple libraries", () => {
   const graph = parseGraphWithLibraries(`<Graph>
   <Tensor id="A0" at={[0, 0]} />
   <Tensor id="A1" at={[100, 0]} />
-  <Edge from="A0.right" to="A1.left" />
+  <Link from="A0.right" to="A1.left" />
 </Graph>`, libraries, "colors mps");
 
   assert.equal(graph.nodes.length, 2);

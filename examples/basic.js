@@ -10,7 +10,7 @@ const graph = parseGraph(`
     <Port id="in" left />
   </Circle>
 
-  <Arrow from="A.out" to="B.in" />
+  <Link headArrow from="A.out" to="B.in" />
 </Graph>
 `);
 

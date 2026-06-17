@@ -1,3 +1,5 @@
+import { regeneratePlotData } from "./plot.js";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MATH_LABEL_HEIGHT = 34;
 const MATH_HANGING_INSET = 8;
@@ -17,6 +19,7 @@ export function renderPlot(svg, plot, options = {}) {
     width,
     height,
     padding,
+    frame: options.frame ?? {},
     xDomain: expandDomain(xDomain),
     yDomain: expandDomain(yDomain)
   };
@@ -332,7 +335,7 @@ function drawSeries(context, series, options) {
   const fmt = parseFmt(series.attrs.fmt);
   const lineVisible = fmt.hasLine ?? options.defaultLine;
   const markerVisible = fmt.hasMarker ?? options.defaultMarkers;
-  const points = series.points.map((point) => project(context, point));
+  const points = seriesPoints(context, series).map((point) => project(context, point));
   const group = el(context, "g", { class: options.className });
 
   if (lineVisible) {
@@ -353,6 +356,37 @@ function drawSeries(context, series, options) {
   }
 
   return group;
+}
+
+function seriesPoints(context, series) {
+  const animate = series.attrs.animate;
+  if (!animate || !series.dataId) return series.points;
+  const source = context.plot.dataSources?.[series.dataId];
+  if (!source?.generated) return series.points;
+  return regeneratePlotData(source, animatedParamValues(animate, context.frame));
+}
+
+function animatedParamValues(animate, frame = {}) {
+  const values = {};
+  const duration = positiveNumber(animate.duration, 1);
+  const rawTime = Number(frame.time ?? 0);
+  const loop = booleanAttr(animate.loop, true);
+  const progress = loop
+    ? positiveModulo(rawTime / duration, 1)
+    : clamp(rawTime / duration, 0, 1);
+
+  for (const [key, range] of Object.entries(animate)) {
+    if (key === "duration" || key === "loop" || !Array.isArray(range)) continue;
+    if (Object.hasOwn(frame, key)) {
+      values[key] = Number(frame[key]);
+      continue;
+    }
+    const from = Number(range[0]);
+    const to = Number(range[1]);
+    values[key] = from + (to - from) * progress;
+  }
+
+  return values;
 }
 
 function drawMarker(context, point, attrs, className) {
@@ -705,6 +739,19 @@ function booleanAttr(value, fallback) {
   if (value === false || value === "false") return false;
   if (value === true || value === "true") return true;
   return Boolean(value);
+}
+
+function positiveNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function positiveModulo(value, modulus) {
+  return ((value % modulus) + modulus) % modulus;
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function plural(count, singular) {

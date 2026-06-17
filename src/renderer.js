@@ -16,7 +16,8 @@ export function renderGraph(svg, graph, options = {}) {
     katex: options.katex ?? null,
     graph,
     nodes,
-    routing: routingDefaults(graph.attrs)
+    routing: routingDefaults(graph.attrs),
+    arrowMarkers: collectArrowMarkerKeys(edges, paths)
   };
 
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
@@ -51,8 +52,8 @@ export function graphSummary(graph) {
   const edgeCount = flattenEdges(graph).length;
   const pathCount = flattenPaths(graph).length;
   const text = pathCount === 0
-    ? `${nodeCount} ${plural(nodeCount, "node")}, ${edgeCount} ${plural(edgeCount, "edge")}`
-    : `${nodeCount} ${plural(nodeCount, "node")}, ${edgeCount} ${plural(edgeCount, "edge")}, ${pathCount} ${plural(pathCount, "path")}`;
+    ? `${nodeCount} ${plural(nodeCount, "node")}, ${edgeCount} ${plural(edgeCount, "link")}`
+    : `${nodeCount} ${plural(nodeCount, "node")}, ${edgeCount} ${plural(edgeCount, "link")}, ${pathCount} ${plural(pathCount, "path")}`;
   return {
     nodeCount,
     edgeCount,
@@ -208,7 +209,7 @@ function drawLeg(context, leg, offsetX, offsetY) {
 function drawEdge(context, edge, from, to, offsetX, offsetY) {
   return styledEl(context, "path", edge.attrs.style, {
     class: "edge",
-    markerEnd: "url(#arrow)",
+    ...arrowMarkerAttrs(context, edge.attrs),
     d: edgePathData(edge, from, to, offsetX, offsetY, context)
   });
 }
@@ -219,6 +220,7 @@ function drawPath(context, path, offsetX, offsetY) {
     fill: "none",
     stroke: "#111111",
     strokeWidth: 2,
+    ...arrowMarkerAttrs(context, path.attrs),
     d: explicitPathData(path, offsetX, offsetY)
   };
   if (!Array.isArray(path.points)) {
@@ -237,9 +239,43 @@ function explicitPathData(path, offsetX, offsetY) {
       x: point.x + offsetX,
       y: point.y + offsetY
     }));
-    return routedPathData(path, compactPoints(points));
+    const data = routedPathData(path, compactPoints(points));
+    return booleanAttr(path.attrs.closed, false) ? `${data} Z` : data;
   }
   return path.attrs.d ?? "";
+}
+
+function arrowMarkerAttrs(context, attrs) {
+  const size = arrowSize(attrs);
+  const markerKey = arrowMarkerKey(size);
+  return {
+    ...(booleanAttr(attrs.tailArrow ?? attrs.tailarrow, false) ? { "marker-start": `url(#${arrowMarkerId("tail", markerKey)})` } : {}),
+    ...(booleanAttr(attrs.headArrow ?? attrs.headarrow, false) ? { "marker-end": `url(#${arrowMarkerId("head", markerKey)})` } : {})
+  };
+}
+
+function arrowSize(attrs) {
+  const size = Number(attrs.arrowSize ?? attrs.arrowsize ?? 12);
+  return Number.isFinite(size) && size > 0 ? size : 12;
+}
+
+function arrowMarkerKey(size) {
+  return String(Number(size.toFixed(3))).replace(/[^0-9A-Za-z_-]/g, "_");
+}
+
+function arrowMarkerId(kind, key) {
+  return key === "12" ? `graphsx-arrow-${kind}` : `graphsx-arrow-${kind}-${key}`;
+}
+
+function collectArrowMarkerKeys(edges, paths) {
+  const keys = new Set();
+  for (const item of [...edges, ...paths]) {
+    const attrs = item.attrs ?? {};
+    if (booleanAttr(attrs.headArrow ?? attrs.headarrow, false) || booleanAttr(attrs.tailArrow ?? attrs.tailarrow, false)) {
+      keys.add(arrowMarkerKey(arrowSize(attrs)));
+    }
+  }
+  return keys;
 }
 
 function routingDefaults(attrs) {
@@ -654,19 +690,31 @@ function cardinalVector(angle) {
 }
 
 function defs(context) {
+  const defs = el(context, "defs");
+  for (const key of context.arrowMarkers) {
+    const size = Number(key.replace(/_/g, "."));
+    defs.append(arrowMarker(context, "head", key, size), arrowMarker(context, "tail", key, size));
+  }
+  return defs;
+}
+
+function arrowMarker(context, kind, key, size) {
   const marker = el(context, "marker", {
-    id: "arrow",
-    markerWidth: 12,
-    markerHeight: 12,
-    refX: 10,
-    refY: 6,
+    id: arrowMarkerId(kind, key),
+    markerWidth: size,
+    markerHeight: size,
+    refX: kind === "head" ? size * 5 / 6 : size / 6,
+    refY: size / 2,
     orient: "auto",
     markerUnits: "strokeWidth"
   });
-  marker.append(el(context, "path", { d: "M 2 2 L 10 6 L 2 10 z", fill: "#2d6cdf" }));
-  const defs = el(context, "defs");
-  defs.append(marker);
-  return defs;
+  marker.append(el(context, "path", {
+    d: kind === "head"
+      ? `M ${size / 6} ${size / 6} L ${size * 5 / 6} ${size / 2} L ${size / 6} ${size * 5 / 6} z`
+      : `M ${size * 5 / 6} ${size / 6} L ${size / 6} ${size / 2} L ${size * 5 / 6} ${size * 5 / 6} z`,
+    fill: "context-stroke"
+  }));
+  return marker;
 }
 
 function collectNodeEdges(node) {

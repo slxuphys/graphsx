@@ -33,7 +33,7 @@ const BUILTIN_SHAPE_TAGS = new Map([
   ["Anchor", "point"],
   ["anchor", "point"]
 ]);
-const EDGE_TAGS = new Set(["Edge", "Arrow", "Link"]);
+const EDGE_TAGS = new Set(["Link"]);
 const PATH_TAGS = new Set(["Path", "path"]);
 const PORT_TAGS = new Set(["Port", "Leg"]);
 const STYLE_TAGS = new Set(["Style"]);

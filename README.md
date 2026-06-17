@@ -16,14 +16,14 @@ Current package name: `inline-graph-dsl`. The project/repo name is GraphSX.
     <Port id="in" left />
   </Circle>
 
-  <Arrow from="A.out" to="B.in" />
+  <Link headArrow from="A.out" to="B.in" />
 </Graph>
 ```
 
 The parser returns a plain JavaScript model:
 
 - `nodes`: shape instances with computed `legs` maps for port coordinates
-- `edges`: connections between `node.port` addresses
+- `edges`: internal connection records created from `<Link>` tags
 - `shapes`: reusable grouped shape definitions
 
 The package exports reusable parser and renderer helpers:
@@ -56,7 +56,7 @@ Ports can use side shorthand or custom local coordinates:
 ```
 
 `at` on a port is relative to its shape. The `tap` port above lands at `[160, 120]` in graph coordinates.
-`angle` controls the direction an arrow emits from or enters the port. `0` points right, `90` points down, `180` points left, and `-90` points up. Side shorthand sets this automatically, but `angle` can override it.
+`angle` controls the direction a routed link emits from or enters the port. `0` points right, `90` points down, `180` points left, and `-90` points up. Side shorthand sets this automatically, but `angle` can override it.
 
 Built-in `Rect` and `Circle` shapes automatically expose `left`, `right`, `top`, and `bottom` ports, so simple connections do not need explicit port declarations:
 
@@ -64,8 +64,8 @@ Built-in `Rect` and `Circle` shapes automatically expose `left`, `right`, `top`,
 <Rect id="A" at={[100, 100]} size={[120, 80]} />
 <Circle id="B" at={[320, 140]} r={40} />
 
-<Arrow from="A.right" to="B.left" />
-<Arrow from="A.top" to="B.bottom" />
+<Link headArrow from="A.right" to="B.left" />
+<Link headArrow from="A.top" to="B.bottom" />
 ```
 
 If you define a port with one of those names yourself, your explicit port overrides the default.
@@ -79,25 +79,25 @@ Use `Point` or `Anchor` when you need a connection target without drawing a shap
   <Port id="in" angle={180} />
 </Anchor>
 
-<Arrow from="A.right" to="J.center" />
-<Arrow from="J.center" to="K.in" />
+<Link headArrow from="A.right" to="J.center" />
+<Link headArrow from="J.center" to="K.in" />
 ```
 
 Point nodes are not rendered as shape boxes and are not treated as obstacles by `route="auto"`.
 
-Arrows use curved routing by default. Use `route="straight"` for a direct segment, `route="orthogonal"` for right-angle routing, or `route="auto"` for v1 obstacle-avoiding A* routing. Orthogonal and auto routing respect port angles by adding a short first and last segment in the port direction:
+Links use curved routing by default. Use `route="straight"` for a direct segment, `route="orthogonal"` for right-angle routing, or `route="auto"` for v1 obstacle-avoiding A* routing. Orthogonal and auto routing respect port angles by adding a short first and last segment in the port direction:
 
 ```jsx
 <Rect id="A" at={[100, 120]} size={[100, 60]} />
 <Rect id="B" at={[340, 60]} size={[100, 60]} />
 
-<Arrow from="A.right" to="B.bottom" route="orthogonal" />
-<Arrow from="A.top" to="B.left" route="straight" />
+<Link headArrow from="A.right" to="B.bottom" route="orthogonal" />
+<Link headArrow from="A.top" to="B.left" route="straight" />
 ```
 
 For orthogonal and auto routes, custom angles are snapped to the nearest cardinal direction. You can change the first and last segment length with `stub={40}`.
 
-Set routing defaults on `<Graph>` when most edges should use the same behavior. For edges, `corner` rounds orthogonal and auto route bends:
+Set routing defaults on `<Graph>` when most links should use the same behavior. For links, `corner` rounds orthogonal and auto route bends:
 
 ```jsx
 <Graph route="auto" grid={20} padding={16} corner={8}>
@@ -105,12 +105,12 @@ Set routing defaults on `<Graph>` when most edges should use the same behavior. 
   <Rect id="Block" at={[210, 70]} size={[90, 110]} />
   <Rect id="B" at={[380, 100]} size={[90, 60]} />
 
-  <Arrow from="A.right" to="B.left" />
-  <Arrow from="A.top" to="B.top" route="orthogonal" corner={0} />
+  <Link headArrow from="A.right" to="B.left" />
+  <Link headArrow from="A.top" to="B.top" route="orthogonal" corner={0} />
 </Graph>
 ```
 
-`route="auto"` avoids shape boxes only in this first version. It does not try to avoid crossing other edges yet. `grid` controls routing resolution and `padding` controls clearance around shapes.
+`route="auto"` avoids shape boxes only in this first version. It does not try to avoid crossing other links yet. `grid` controls routing resolution and `padding` controls clearance around shapes.
 
 Use `<Path>` when you want exact drawn geometry instead of a semantic connection between ports:
 
@@ -119,11 +119,11 @@ Use `<Path>` when you want exact drawn geometry instead of a semantic connection
   <Style id="wire" stroke="#111111" strokeWidth={2} />
 
   <Path points={[[90, 80], [90, 240], [180, 240]]} useStyle="wire" />
-  <Path points={[[120, 80], [170, 80], [170, 160]]} corner={6} />
+  <Path points={[[120, 80], [170, 80], [170, 160]]} corner={6} headArrow />
 </Graph>
 ```
 
-`Path` renders without an arrowhead by default. `points` is an array of graph coordinates; `corner` rounds bends. A raw SVG path string is also accepted with `d="M 90 80 L 90 240 L 180 240"`.
+`Path` renders without arrowheads by default. Add `headArrow` and/or `tailArrow` to decorate endpoints, and tune them with `arrowSize={8}`. `points` is an array of graph coordinates; `corner` rounds bends. A raw SVG path string is also accepted with `d="M 90 80 L 90 240 L 180 240"`.
 
 ## Layout
 
@@ -133,11 +133,11 @@ Coordinates are optional when a graph layout is enabled. `layout="row"` and `lay
 <Graph layout="row" gap={120}>
   <Rect id="A" size={[100, 60]} />
   <Rect id="B" size={[100, 60]} />
-  <Arrow from="A.right" to="B.left" />
+  <Link headArrow from="A.right" to="B.left" />
 </Graph>
 ```
 
-`layout="dag"` reads arrows between top-level nodes and places related nodes in layers. With `direction="right"`, layers go left-to-right and siblings stack vertically:
+`layout="dag"` reads links between top-level nodes and places related nodes in layers. With `direction="right"`, layers go left-to-right and siblings stack vertically:
 
 ```jsx
 <Graph layout="dag" direction="right" rankGap={200} nodeGap={90}>
@@ -145,14 +145,14 @@ Coordinates are optional when a graph layout is enabled. `layout="row"` and `lay
   <Rect id="B" size={[100, 60]} />
   <Rect id="C" size={[100, 60]} />
 
-  <Arrow from="A.right" to="B.left" />
-  <Arrow from="A.right" to="C.left" />
+  <Link headArrow from="A.right" to="B.left" />
+  <Link headArrow from="A.right" to="C.left" />
 </Graph>
 ```
 
 This places `A` in the first layer and `B`/`C` in a parallel layer to the right. Explicit coordinates still win, so a node with `at={[x, y]}` is not moved by layout.
 
-Use `style={{ ... }}` for SVG styling on shapes, ports, paths, and edges:
+Use `style={{ ... }}` for SVG styling on shapes, ports, paths, and links:
 
 ```jsx
 <Style id="blueBox" fill="#eef6ff" stroke="#1d4ed8" strokeWidth={2} />
@@ -161,7 +161,7 @@ Use `style={{ ... }}` for SVG styling on shapes, ports, paths, and edges:
   <Port id="out" right style={{ fill: "#f97316" }} />
 </Rect>
 
-<Arrow from="A.out" to="B.in" style={{ stroke: "#7c3aed", strokeWidth: 3 }} />
+<Link headArrow from="A.out" to="B.in" style={{ stroke: "#7c3aed", strokeWidth: 3 }} />
 ```
 
 Style keys can use camelCase, such as `strokeWidth`; the renderer maps them to SVG attributes. Reuse named styles with `useStyle`, and override them with inline `style`:
@@ -205,15 +205,15 @@ Grouped shapes are declared with `<Shape>` and can be instantiated by name:
     <Circle id="right" at={[170, 25]} r={25}>
       <Port id="in" left />
     </Circle>
-    <Arrow from="left.out" to="right.in" />
+    <Link headArrow from="left.out" to="right.in" />
     <Port id="in" target="left.in" left />
     <Port id="out" target="right.right" right />
   </Shape>
 
   <Pair id="P1" at={[100, 100]} />
   <Pair id="P2" at={[450, 100]} />
-  <Arrow from="P1.out" to="P2.in" />
-  <Arrow from="P1.left.in" to="P2.right.in" />
+  <Link headArrow from="P1.out" to="P2.in" />
+  <Link headArrow from="P1.left.in" to="P2.right.in" />
 </Graph>
 ```
 
@@ -251,7 +251,7 @@ Backtick strings use `${name}` for shape prop substitution and `${i+1}` / `${i-1
 
 ## Repeat
 
-Use `<Repeat>` to expand repeated nodes or edges before the graph is built:
+Use `<Repeat>` to expand repeated nodes or links before the graph is built:
 
 ```jsx
 <Graph>
@@ -263,12 +263,12 @@ Use `<Repeat>` to expand repeated nodes or edges before the graph is built:
   </Repeat>
 
   <Repeat count={3} as="i">
-    <Arrow from={`box${i}.out`} to={`box${i+1}.in`} />
+    <Link headArrow from={`box${i}.out`} to={`box${i+1}.in`} />
   </Repeat>
 </Graph>
 ```
 
-`${i}` is replaced with the loop index inside backtick attributes. `${i+1}` and `${i-1}` are supported for neighboring edges. `step` offsets repeated shapes; ports remain local to their shape.
+`${i}` is replaced with the loop index inside backtick attributes. `${i+1}` and `${i-1}` are supported for neighboring links. `step` offsets repeated shapes; ports remain local to their shape.
 
 Nested repeats can build grids:
 
@@ -319,7 +319,7 @@ Markdown authors use the `graphsx` fence:
 <Graph>
   <Rect id="A" />
   <Rect id="B" at={[220, 0]} />
-  <Arrow from="A.right" to="B.left" />
+  <Link headArrow from="A.right" to="B.left" />
 </Graph>
 ```
 ````
@@ -346,7 +346,7 @@ Definitions can be shared across Markdown fences with explicit document-local li
 <Graph route="straight">
   <Tensor id="A0" at={[0, 0]} />
   <Tensor id="A1" at={[110, 0]} />
-  <Edge from="A0.right" to="A1.left" useStyle="wire" />
+  <Link from="A0.right" to="A1.left" useStyle="wire" />
 </Graph>
 ```
 ````
