@@ -1,5 +1,5 @@
-import { buildGraphModel, parseGraph, parseMarkup } from "./parser.js";
-import { renderGraph } from "./renderer.js";
+import { parseMarkup } from "./parser.js";
+import { parseGraphSXDocument, renderGraphSXDocument } from "./document.js";
 
 export const GRAPHSX_FENCE = "graphsx";
 export const GRAPHSX_DEFS_FENCE = "graphsx-defs";
@@ -51,7 +51,7 @@ export function renderGraphSXBlocks(root, options = {}) {
     host.classList.add("graphsx-rendered");
 
     try {
-      const graph = use ? parseGraphWithLibraries(source, libraries, use) : parseGraph(source);
+      const graph = parseGraphWithLibraries(source, libraries, use);
       const documentRef = options.document ?? host.ownerDocument ?? document;
       const svg = documentRef.createElementNS("http://www.w3.org/2000/svg", "svg");
       const renderOptions = {
@@ -60,7 +60,7 @@ export function renderGraphSXBlocks(root, options = {}) {
         viewportPadding: 24,
         ...options
       };
-      const size = renderGraph(svg, graph, renderOptions);
+      const size = renderGraphSXDocument(svg, graph, renderOptions);
       svg.setAttribute("width", size.width);
       svg.setAttribute("height", size.height);
       host.append(svg);
@@ -74,24 +74,7 @@ export function renderGraphSXBlocks(root, options = {}) {
 }
 
 export function parseGraphWithLibraries(source, libraries, use) {
-  const defs = resolveUsedLibraries(libraries, use);
-  if (defs.length === 0) {
-    return parseGraph(source);
-  }
-
-  const roots = parseMarkup(source).filter((node) => node.type === "element");
-  if (roots.length !== 1 || roots[0].name !== "Graph") {
-    return parseGraph(source);
-  }
-
-  const graph = roots[0];
-  return buildGraphModel({
-    ...graph,
-    children: [
-      ...defs.flatMap((item) => parseMarkup(item.source).filter((node) => node.type === "element")),
-      ...graph.children
-    ]
-  });
+  return parseGraphSXDocument(source, { libraries, use });
 }
 
 export function parseFenceInfo(rawInfo = "") {
@@ -125,18 +108,4 @@ function collectGraphSXLibraries(root) {
     libraries.set(name, { name, source });
   }
   return libraries;
-}
-
-function resolveUsedLibraries(libraries, use) {
-  return splitUseList(use).map((name) => {
-    const library = libraries instanceof Map ? libraries.get(name) : libraries?.[name];
-    if (!library) {
-      throw new Error(`Unknown GraphSX library "${name}"`);
-    }
-    return typeof library === "string" ? { name, source: library } : library;
-  });
-}
-
-function splitUseList(use) {
-  return String(use).split(/[\s,]+/).map((name) => name.trim()).filter(Boolean);
 }

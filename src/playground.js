@@ -13,10 +13,10 @@ import {
 } from "./codemirror.js";
 import {
   GRAPHSX_FENCE,
-  graphSummary,
+  graphSXDocumentSummary,
   graphsxMarkdownIt,
-  parseGraph,
-  renderGraph,
+  parseGraphSXDocument,
+  renderGraphSXDocument,
   renderGraphSXBlocks
 } from "./index.js";
 
@@ -580,12 +580,13 @@ function renderGraphMode() {
     markdownPreview.hidden = true;
     zoomControls.hidden = false;
     renderTitle.textContent = modes.graph.title;
-    const graph = parseGraph(editorText());
-    renderedSize = renderGraph(svg, graph, { katex });
+    const graph = parseGraphSXDocument(editorText());
+    renderedSize = renderGraphSXDocument(svg, graph, { katex });
     applyViewport();
     status.textContent = "Parsed successfully";
     status.classList.remove("error");
-    summary.textContent = graphSummary(graph).text;
+    renderTitle.textContent = graph.type === "plot" ? "Rendered Plot" : modes.graph.title;
+    summary.textContent = graphSXDocumentSummary(graph).text;
   } catch (error) {
     status.textContent = error.message;
     status.classList.add("error");

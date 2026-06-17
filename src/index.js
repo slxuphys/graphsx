@@ -7,6 +7,18 @@ export {
 } from "./parser.js";
 
 export {
+  parsePlot,
+  parsePlots,
+  buildPlotModel
+} from "./plot.js";
+
+export {
+  parseGraphSXDocument,
+  renderGraphSXDocument,
+  graphSXDocumentSummary
+} from "./document.js";
+
+export {
   renderGraph,
   graphSummary,
   flattenNodes,
@@ -14,6 +26,11 @@ export {
   flattenPaths,
   edgePathData
 } from "./renderer.js";
+
+export {
+  renderPlot,
+  plotSummary
+} from "./plot-renderer.js";
 
 export {
   GRAPHSX_FENCE,

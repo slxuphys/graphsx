@@ -1,7 +1,7 @@
 import { StateField } from "@codemirror/state";
 import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import { GRAPHSX_DEFS_FENCE, GRAPHSX_FENCE, parseFenceInfo, parseGraphWithLibraries } from "./markdown.js";
-import { renderGraph } from "./renderer.js";
+import { renderGraphSXDocument } from "./document.js";
 
 export function graphsxCodeMirrorLivePreview(options = {}) {
   const config = {
@@ -140,7 +140,7 @@ class GraphSXPreviewWidget extends WidgetType {
     try {
       const graph = parseGraphWithLibraries(this.source, this.libraryMap, this.use);
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      const size = renderGraph(svg, graph, {
+      const size = renderGraphSXDocument(svg, graph, {
         ...this.config.renderOptions,
         katex: this.config.katex
       });

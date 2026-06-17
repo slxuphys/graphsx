@@ -12,12 +12,18 @@
   },
   "files": [
     "src/index.js",
+    "src/errors.js",
+    "src/literals.js",
+    "src/markup.js",
     "src/parser.js",
+    "src/plot.js",
+    "src/plot-renderer.js",
     "src/renderer.js",
     "src/markdown.js",
     "src/markdown.css",
     "src/codemirror.js",
     "src/codemirror.css",
+    "src/document.js",
     "README.md"
   ],
   "scripts": {
