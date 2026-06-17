@@ -573,6 +573,12 @@ function render() {
 }
 
 function renderGraphMode() {
+  const timingLabel = "GraphSX playground parse+render";
+  const parseTimingLabel = "GraphSX playground parse";
+  const renderTimingLabel = "GraphSX playground render";
+  let parseTimerActive = false;
+  let renderTimerActive = false;
+  console.time(timingLabel);
   try {
     app.classList.remove("live-preview-mode");
     canvas.classList.remove("markdown-mode");
@@ -580,16 +586,32 @@ function renderGraphMode() {
     markdownPreview.hidden = true;
     zoomControls.hidden = false;
     renderTitle.textContent = modes.graph.title;
+    console.time(parseTimingLabel);
+    parseTimerActive = true;
     const graph = parseGraphSXDocument(editorText());
+    console.timeEnd(parseTimingLabel);
+    parseTimerActive = false;
+    console.time(renderTimingLabel);
+    renderTimerActive = true;
     renderedSize = renderGraphSXDocument(svg, graph, { katex });
+    console.timeEnd(renderTimingLabel);
+    renderTimerActive = false;
     applyViewport();
     status.textContent = "Parsed successfully";
     status.classList.remove("error");
     renderTitle.textContent = graph.type === "plot" ? "Rendered Plot" : modes.graph.title;
     summary.textContent = graphSXDocumentSummary(graph).text;
   } catch (error) {
+    if (parseTimerActive) {
+      console.timeEnd(parseTimingLabel);
+    }
+    if (renderTimerActive) {
+      console.timeEnd(renderTimingLabel);
+    }
     status.textContent = error.message;
     status.classList.add("error");
+  } finally {
+    console.timeEnd(timingLabel);
   }
 }
 
