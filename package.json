@@ -1,6 +1,6 @@
 {
   "name": "@slxu/graphsx",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A small React-like inline graph DSL parser and model builder.",
   "type": "module",
   "main": "src/index.js",
