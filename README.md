@@ -13,7 +13,87 @@ It is designed for notes, papers, docs, and small scientific figures where the s
 
 Try the playground: https://slxuphys.github.io/graphsx/
 
-Current npm package name: `inline-graph-dsl`. Project and repo name: GraphSX.
+Current npm package name: `graphsx`. Project and repo name: GraphSX.
+
+## What It Looks Like
+
+<table>
+<tr>
+<td width="48%">
+
+<pre><code class="language-jsx">&lt;Graph&gt;
+  &lt;Style id="box" fill="#eef6ff" stroke="#1d4ed8" /&gt;
+  &lt;Style id="wire" stroke="#7c3aed" strokeWidth={3} /&gt;
+
+  &lt;Rect id="A" at={[70, 82]} size={[100, 60]} label="alpha" useStyle="box"&gt;
+    &lt;Port id="out" right label="xy" /&gt;
+  &lt;/Rect&gt;
+  &lt;Circle id="B" at={[280, 112]} r={40} label="B"&gt;
+    &lt;Port id="in" left /&gt;
+  &lt;/Circle&gt;
+
+  &lt;Link headArrow from="A.out" to="B.in" useStyle="wire" /&gt;
+&lt;/Graph&gt;</code></pre>
+
+</td>
+<td width="52%">
+
+<img src="docs/assets/basic-graph.svg" alt="GraphSX port diagram rendered as SVG" />
+
+</td>
+</tr>
+<tr>
+<td width="48%">
+
+<pre><code class="language-jsx">&lt;Plot width={430} height={330} xDomain={[-18, 18]} yDomain={[-18, 14]} frame box&gt;
+  &lt;Data
+    id="heart"
+    x="16 * pow(sin(t), 3)"
+    y="13*cos(t) - 5*cos(2*t) - 2*cos(3*t) - cos(4*t)"
+    domain={[0, 2*pi]}
+    samples={360}
+  /&gt;
+
+  &lt;Axis x label="x" ticks grid /&gt;
+  &lt;Axis y label="y" ticks grid /&gt;
+  &lt;Line data="heart" stroke="#e11d48" strokeWidth={2.6} /&gt;
+&lt;/Plot&gt;</code></pre>
+
+</td>
+<td width="52%">
+
+<img src="docs/assets/plot-heart.svg" alt="GraphSX parametric heart curve rendered as SVG" />
+
+</td>
+</tr>
+<tr>
+<td width="48%">
+
+<pre><code class="language-jsx">&lt;Graph route="straight"&gt;
+  &lt;Shape id="Tensor" groupBox={false}&gt;
+    &lt;Rect id="box" size={[54, 54]} corner={8} label={label}&gt;
+      &lt;Port id="left" left r={0} /&gt;
+      &lt;Port id="right" right r={0} /&gt;
+      &lt;Port id="phys" bottom r={0} /&gt;
+    &lt;/Rect&gt;
+    &lt;Port id="left" target="box.left" /&gt;
+    &lt;Port id="right" target="box.right" /&gt;
+    &lt;Port id="phys" target="box.phys" /&gt;
+  &lt;/Shape&gt;
+
+  &lt;Repeat count={4} as="i" step={[96, 0]}&gt;
+    &lt;Tensor id={`A${i}`} at={[70, 60]} label={`A${i}`} /&gt;
+  &lt;/Repeat&gt;
+&lt;/Graph&gt;</code></pre>
+
+</td>
+<td width="52%">
+
+<img src="docs/assets/tensor-repeat.svg" alt="GraphSX repeated tensor network rendered as SVG" />
+
+</td>
+</tr>
+</table>
 
 ## Quick Example
 
@@ -37,7 +117,7 @@ Current npm package name: `inline-graph-dsl`. Project and repo name: GraphSX.
 Use it from JavaScript:
 
 ```js
-import { parseGraphSXDocument, renderGraphSXDocument } from "inline-graph-dsl";
+import { parseGraphSXDocument, renderGraphSXDocument } from "graphsx";
 import katex from "katex";
 
 const model = parseGraphSXDocument(source);
@@ -389,8 +469,8 @@ GraphSX works in Markdown with a `markdown-it` plugin:
 ```js
 import MarkdownIt from "markdown-it";
 import katex from "katex";
-import { graphsxMarkdownIt, renderGraphSXBlocks } from "inline-graph-dsl";
-import "inline-graph-dsl/markdown.css";
+import { graphsxMarkdownIt, renderGraphSXBlocks } from "graphsx";
+import "graphsx/markdown.css";
 
 const md = new MarkdownIt().use(graphsxMarkdownIt);
 const preview = document.querySelector("#preview");
@@ -438,8 +518,8 @@ Use the CodeMirror extension to render `graphsx` fences as editable live widgets
 import { EditorView, basicSetup } from "codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { jsxLanguage } from "@codemirror/lang-javascript";
-import { graphsxCodeMirrorLivePreview } from "inline-graph-dsl/codemirror";
-import "inline-graph-dsl/codemirror.css";
+import { graphsxCodeMirrorLivePreview } from "graphsx/codemirror";
+import "graphsx/codemirror.css";
 
 new EditorView({
   doc,

@@ -1,0 +1,15 @@
+<svg viewBox="0 0 720 520" xmlns="http://www.w3.org/2000/svg"><style>
+    .shape { fill: #ffffff; stroke: #26312d; stroke-width: 2; }
+    .node-label { font: 700 14px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1e2724; pointer-events: none; }
+    .leg-label { font: 11px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #52605a; pointer-events: none; }
+    .edge { fill: none; stroke: #2d6cdf; stroke-width: 2.5; }
+    .path { fill: none; stroke: #111111; stroke-width: 2; }
+    .leg-dot { fill: #16846f; stroke: #ffffff; stroke-width: 2; }
+    .plot-frame, .plot-box { fill: none; stroke: #26312d; stroke-width: 1.8; }
+    .plot-axis { stroke: #26312d; stroke-width: 1.8; }
+    .plot-tick { stroke: #26312d; stroke-width: 1.3; }
+    .plot-grid { stroke: #d8ded8; stroke-width: 1; }
+    .plot-line, .plot-curve { fill: none; stroke: #2563eb; stroke-width: 2; }
+    .plot-line-marker { fill: #ffffff; stroke: #2563eb; stroke-width: 2; }
+    .plot-axis-label, .plot-tick-label, .plot-label { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1e2724; }
+  </style><defs><marker id="graphsx-arrow-head" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth"><path d="M 2 2 L 10 6 L 2 10 z" fill="context-stroke"></path></marker><marker id="graphsx-arrow-tail" markerWidth="12" markerHeight="12" refX="2" refY="6" orient="auto" markerUnits="strokeWidth"><path d="M 10 2 L 2 6 L 10 10 z" fill="context-stroke"></path></marker></defs><g><path class="edge" marker-end="url(#graphsx-arrow-head)" d="M 180 120 C 228 120, 202 120, 250 120" style="stroke: #7c3aed; stroke-width: 3"></path></g><g></g><g><g><rect class="shape" x="80" y="90" width="100" height="60" rx="6" style="fill: #eef6ff; stroke: #1d4ed8; stroke-width: 2"></rect><text class="node-label" x="130" y="124" text-anchor="middle">alpha</text><g><circle class="leg-dot" cx="180" cy="120" r="5"></circle><text class="leg-label" x="190" y="114" text-anchor="start">xy</text></g></g><g><circle class="shape" cx="290" cy="120" r="40"></circle><text class="node-label" x="290" y="124" text-anchor="middle">B</text><g><circle class="leg-dot" cx="250" cy="120" r="5"></circle></g></g></g></svg>

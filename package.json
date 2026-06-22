@@ -1,5 +1,5 @@
 {
-  "name": "inline-graph-dsl",
+  "name": "graphsx",
   "version": "0.1.0",
   "description": "A small React-like inline graph DSL parser and model builder.",
   "type": "module",
@@ -24,12 +24,14 @@
     "src/codemirror.js",
     "src/codemirror.css",
     "src/document.js",
+    "docs/assets/*.svg",
     "README.md"
   ],
   "scripts": {
     "build": "vite build",
     "build:pages": "vite build --base=/graphsx/",
     "dev": "vite --host 127.0.0.1",
+    "generate:readme-assets": "node scripts/generate-readme-assets.js",
     "playground": "vite --host 127.0.0.1",
     "test": "node --test"
   },
