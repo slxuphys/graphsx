@@ -21,6 +21,13 @@ Install from npm:
 npm install @slxu/graphsx
 ```
 
+Optional integrations use the host app's packages:
+
+```bash
+npm install katex markdown-it
+npm install codemirror @codemirror/state @codemirror/view @codemirror/lang-javascript @codemirror/lang-markdown
+```
+
 ## What It Looks Like
 
 ### Port Diagram
