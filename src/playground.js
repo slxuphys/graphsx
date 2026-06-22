@@ -142,6 +142,115 @@ const graphExamples = [
   <Path points={[[0.5, 8.8], [1.2, 8.8], [1.2, 7.6]]} corner={6} headArrow stroke="#16a34a" strokeWidth={2} />
   <Rect id="screenNote" at={[430, 86]} atUnit="screen" size={[106, 28]} label="screen pos" fill="#f8fafc" stroke="#64748b" />
 </Plot>`
+  },
+  {
+    name: "Function Plot",
+    source: `<Plot width={620} height={380} padding={[54, 64, 70, 74]} xDomain={[0, 2*pi]} yDomain={[-1.2, 1.2]} frame box>
+  <Data id="sin" y="sin(x)" domain={[0, 2*pi]} samples={180} />
+  <Data id="cos" y="cos(x)" domain={[0, 2*pi]} samples={180} />
+
+  <Axis x label="$x$">
+    <Ticks values={[0, pi/2, pi, 3*pi/2, 2*pi]} labels={["$0$", "$\\pi/2$", "$\\pi$", "$3\\pi/2$", "$2\\pi$"]} grid />
+  </Axis>
+  <Axis y label="$f(x)$" ticks grid />
+
+  <Line data="sin" stroke="#2563eb" strokeWidth={2} label="$\\sin(x)$" />
+  <Line data="cos" stroke="#dc2626" strokeWidth={2} strokeDasharray="7 5" label="$\\cos(x)$" />
+  <Text at={[1.2, 0.82]} label="$\\alpha$" fontSize={22} />
+  <Legend position="top-right" />
+</Plot>`
+  },
+  {
+    name: "Animated Wave",
+    source: `<Plot width={620} height={360} padding={[54, 64, 70, 74]} xDomain={[0, 2*pi]} yDomain={[-1.2, 1.2]} frame box>
+  <Data
+    id="wave"
+    y="sin(x - phase)"
+    params={{ phase: 0 }}
+    domain={[0, 2*pi]}
+    samples={180}
+  />
+
+  <Axis x label="$x$">
+    <Ticks values={[0, pi/2, pi, 3*pi/2, 2*pi]} labels={["$0$", "$\\pi/2$", "$\\pi$", "$3\\pi/2$", "$2\\pi$"]} grid />
+  </Axis>
+  <Axis y label="$\\sin(x-\\phi)$" ticks grid />
+
+  <Line
+    data="wave"
+    stroke="#2563eb"
+    strokeWidth={2.5}
+    label="wave"
+    animate={{ phase: [0, 2*pi] }}
+    duration={2600}
+  />
+  <Text at={[pi, 0.82]} label="$\\phi: 0 \\to 2\\pi$" fontSize={18} />
+  <Legend position="top-right" />
+</Plot>`
+  },
+  {
+    name: "Heart Curve",
+    source: `<Plot width={500} height={460} padding={[38, 44, 54, 58]} xDomain={[-18, 18]} yDomain={[-18, 14]} frame box>
+  <Data
+    id="heart"
+    x="16 * pow(sin(t), 3)"
+    y="13*cos(t) - 5*cos(2*t) - 2*cos(3*t) - cos(4*t)"
+    domain={[0, 2*pi]}
+    samples={420}
+  />
+
+  <Axis x label="$x$" ticks grid />
+  <Axis y label="$y$" ticks grid />
+
+  <Line data="heart" stroke="#e11d48" strokeWidth={2.8} label="heart" />
+  <Text at={[0, 10.8]} label="$x(t), y(t)$" fontSize={22} />
+  <Legend position="bottom-right" />
+</Plot>`
+  },
+  {
+    name: "Plot + Diagram",
+    source: `<Graph route="orthogonal" corner={8}>
+  <Plot id="loss" at={[0, 0]} width={380} height={250} xDomain={[0, 10]} yDomain={[0, 3]} frame box>
+    <Port id="out" right />
+    <Axis x label="epoch" ticks grid />
+    <Axis y label="loss" ticks grid />
+    <Data id="curve" y="2.6*exp(-0.28*x)+0.25" domain={[0, 10]} samples={120} />
+    <Line data="curve" stroke="#2563eb" strokeWidth={2.5} label="train" />
+    <Legend />
+  </Plot>
+
+  <Rect id="note" at={loss.out + [70, -38]} size={[150, 76]} corner={8} label="converged" style={{ fill: "#fff7ed", stroke: "#c2410c", strokeWidth: 2 }}>
+    <Port id="in" left />
+  </Rect>
+
+  <Link from="loss.out" to="note.in" headArrow />
+  <Point id="caption" at={[190, 300]} label="training summary" r={0} />
+</Graph>`
+  },
+  {
+    name: "Graph Subplots",
+    source: `<Graph>
+  <Plot id="left" at={[0, 0]} width={320} height={220} xDomain={[0, 4]} yDomain={[0, 8]} frame box>
+    <Port id="out" right />
+    <Axis x label="$x$" ticks grid />
+    <Axis y label="$f(x)$" ticks grid />
+    <Line points={[[0, 1], [1, 2], [2, 4], [3, 7], [4, 8]]} stroke="#2563eb" strokeWidth={2} label="fit" />
+    <Legend />
+  </Plot>
+
+  <Plot id="right" at={left.right + [90, 0]} width={320} height={220} xDomain={[0, 4]} yDomain={[-1, 1]} frame box>
+    <Port id="in" left />
+    <Axis x label="$x$" ticks grid />
+    <Axis y label="$g(x)$" ticks grid />
+    <Data id="wave" y="sin(2*x)" domain={[0, 4]} samples={120} />
+    <Line data="wave" stroke="#dc2626" strokeWidth={2} label="$\\sin(2x)$" />
+    <Legend />
+  </Plot>
+
+  <Point id="a" at={[160, 265]} label="(a)" r={0} />
+  <Point id="b" at={right.bottom + [0, 45]} label="(b)" r={0} />
+  <Link from="left.out" to="right.in" route="orthogonal" headArrow />
+</Graph>`
   }
 ];
 
@@ -402,6 +511,11 @@ const modes = {
       }),
       graphsxCodeMirrorLivePreview({ katex })
     ]
+  },
+  docs: {
+    title: "Documentation",
+    examples: [],
+    extension: javascript({ jsx: true })
   }
 };
 
@@ -409,6 +523,8 @@ const md = new MarkdownIt({ html: false, linkify: true, typographer: true }).use
 const language = new Compartment();
 const app = document.querySelector(".app");
 const editorHost = document.querySelector("#editor");
+const editorTab = document.querySelector("#editorTab");
+const docsTab = document.querySelector("#docsTab");
 const mode = document.querySelector("#mode");
 const example = document.querySelector("#example");
 const status = document.querySelector("#status");
@@ -417,6 +533,7 @@ const svg = document.querySelector("#graph");
 const canvas = document.querySelector(".canvas-wrap");
 const markdownPreview = document.querySelector("#markdownPreview");
 const renderTitle = document.querySelector("#renderTitle");
+const docsPane = document.querySelector(".docs-pane");
 const zoomControls = document.querySelector(".zoom-controls");
 const syntaxToggle = document.querySelector("#syntaxToggle");
 const zoomOut = document.querySelector("#zoomOut");
@@ -438,32 +555,39 @@ let editor = null;
 let applyingEditorChange = false;
 let animationFrameId = null;
 let currentMode = loadStoredValue("mode", "graph");
+let editorMode = loadStoredValue("editorMode", currentMode === "docs" ? "graph" : currentMode);
 let syntaxCollapsed = loadStoredValue("syntaxCollapsed", "false") === "true";
 const modeContent = {
   graph: loadStoredValue("content:graph", loadDraft("graph", graphExamples[0].source)),
-  markdown: loadStoredValue("content:markdown", loadDraft("markdown", markdownExamples[0].source))
+  markdown: loadStoredValue("content:markdown", loadDraft("markdown", markdownExamples[0].source)),
+  docs: ""
 };
 const selectedExample = {
   graph: loadStoredValue("example:graph", draftOptionValue),
-  markdown: loadStoredValue("example:markdown", draftOptionValue)
+  markdown: loadStoredValue("example:markdown", draftOptionValue),
+  docs: draftOptionValue
 };
 
 if (!modes[currentMode]) {
   currentMode = "graph";
 }
-mode.value = currentMode;
+if (!modes[editorMode] || editorMode === "docs") {
+  editorMode = "graph";
+}
+mode.value = editorMode;
 applySyntaxPaneState();
 
 populateExamples();
 
 editor = new EditorView({
-  doc: modeContent[currentMode],
+  doc: modeContent[contentKey(editorMode)],
   extensions: [
     basicSetup,
-    language.of(modes[currentMode].extension),
+    language.of(modes[editorMode].extension),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
         if (applyingEditorChange) return;
+        if (currentMode === "docs") return;
         const key = contentKey(currentMode);
         if (selectedExample[key] !== draftOptionValue) {
           selectedExample[key] = draftOptionValue;
@@ -478,6 +602,33 @@ editor = new EditorView({
     })
   ],
   parent: editorHost
+});
+editorTab.addEventListener("click", () => {
+  if (currentMode !== "docs") return;
+  currentMode = editorMode;
+  storeValue("mode", currentMode);
+  editor.dispatch({
+    effects: language.reconfigure(modes[currentMode].extension)
+  });
+  populateExamples();
+  setEditorText(modeContent[contentKey(currentMode)]);
+  render();
+  if (currentMode === "graph") {
+    fitToView();
+  }
+});
+docsTab.addEventListener("click", () => {
+  if (currentMode !== "docs") {
+    const key = contentKey(currentMode);
+    modeContent[key] = editorText();
+    saveModeContent(key);
+    saveDraft(key);
+    editorMode = currentMode;
+    storeValue("editorMode", editorMode);
+  }
+  currentMode = "docs";
+  storeValue("mode", currentMode);
+  render();
 });
 zoomOut.addEventListener("click", () => setZoom(zoom / zoomStep, canvasCenter()));
 zoomIn.addEventListener("click", () => setZoom(zoom * zoomStep, canvasCenter()));
@@ -537,7 +688,9 @@ mode.addEventListener("change", () => {
   modeContent[contentKey(currentMode)] = editorText();
   saveModeContent(contentKey(currentMode));
   currentMode = mode.value;
+  editorMode = currentMode;
   storeValue("mode", currentMode);
+  storeValue("editorMode", editorMode);
   editor.dispatch({
     effects: language.reconfigure(modes[currentMode].extension)
   });
@@ -591,6 +744,11 @@ fitToView();
 
 function render() {
   stopAnimation();
+  updateHeaderTabs();
+  if (currentMode === "docs") {
+    renderDocsMode();
+    return;
+  }
   if (currentMode === "markdown") {
     renderMarkdownMode();
     return;
@@ -611,7 +769,9 @@ function renderGraphMode() {
   console.time(timingLabel);
   try {
     app.classList.remove("live-preview-mode");
+    app.classList.remove("docs-mode");
     canvas.classList.remove("markdown-mode");
+    docsPane.hidden = true;
     svg.hidden = false;
     markdownPreview.hidden = true;
     zoomControls.hidden = false;
@@ -676,7 +836,9 @@ function hasAnimation(documentModel) {
 function renderMarkdownMode() {
   try {
     app.classList.remove("live-preview-mode");
+    app.classList.remove("docs-mode");
     canvas.classList.add("markdown-mode");
+    docsPane.hidden = true;
     svg.hidden = true;
     svg.replaceChildren();
     svg.removeAttribute("viewBox");
@@ -698,7 +860,9 @@ function renderMarkdownMode() {
 function renderLiveMarkdownMode() {
   try {
     app.classList.add("live-preview-mode");
+    app.classList.remove("docs-mode");
     canvas.classList.add("markdown-mode");
+    docsPane.hidden = true;
     svg.hidden = true;
     svg.replaceChildren();
     svg.removeAttribute("viewBox");
@@ -714,6 +878,28 @@ function renderLiveMarkdownMode() {
     status.textContent = error.message;
     status.classList.add("error");
   }
+}
+
+function renderDocsMode() {
+  app.classList.remove("live-preview-mode");
+  app.classList.add("docs-mode");
+  canvas.classList.add("markdown-mode");
+  docsPane.hidden = false;
+  svg.hidden = true;
+  svg.replaceChildren();
+  svg.removeAttribute("viewBox");
+  svg.removeAttribute("style");
+  markdownPreview.hidden = true;
+  zoomControls.hidden = true;
+  example.hidden = true;
+  status.textContent = "Docs ready";
+  status.classList.remove("error");
+}
+
+function updateHeaderTabs() {
+  const docsActive = currentMode === "docs";
+  editorTab.setAttribute("aria-selected", String(!docsActive));
+  docsTab.setAttribute("aria-selected", String(docsActive));
 }
 
 function editorText() {
@@ -781,7 +967,9 @@ function applySyntaxPaneState() {
 }
 
 function populateExamples() {
+  example.hidden = currentMode === "docs";
   example.textContent = "";
+  if (currentMode === "docs") return;
   const draftOption = document.createElement("option");
   draftOption.value = draftOptionValue;
   draftOption.textContent = "Draft";

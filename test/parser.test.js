@@ -1287,6 +1287,80 @@ test("resolves chained port placement in dependency order", () => {
   assert.equal(graph.nodes[2].x, 260);
 });
 
+test("parses plots as graph nodes with rect-like ports", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Plot id="p1" at={[40, 50]} width={320} height={220} xDomain={[0, 2]} yDomain={[0, 4]} box>
+        <Port id="out" right />
+        <Axis x ticks />
+        <Axis y ticks />
+        <Line points={[[0, 0], [1, 1], [2, 4]]} />
+      </Plot>
+      <Rect id="note" at={p1.out + [40, -20]} size={[90, 40]} label="note" />
+      <Link from="p1.out" to="note.left" />
+    </Graph>
+  `);
+
+  const plot = graph.nodes[0];
+  assert.equal(plot.shape, "plot");
+  assert.equal(plot.x, 40);
+  assert.equal(plot.y, 50);
+  assert.equal(plot.attrs.w, 320);
+  assert.equal(plot.attrs.h, 220);
+  assert.equal(plot.plot.type, "plot");
+  assert.equal(plot.plot.lines.length, 1);
+  assert.equal(plot.legs.out.x, 360);
+  assert.equal(plot.legs.out.y, 160);
+  assert.equal(plot.legs.left.x, 40);
+  assert.equal(plot.legs.right.x, 360);
+  assert.equal(graph.nodes[1].x, 400);
+  assert.equal(graph.nodes[1].y, 140);
+});
+
+test("renders plots nested inside graphs", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Plot id="p1" at={[10, 20]} width={240} height={160} xDomain={[0, 1]} yDomain={[0, 1]} frame box>
+        <Axis x label="x" ticks />
+        <Axis y label="y" ticks />
+        <Line points={[[0, 0], [1, 1]]} />
+      </Plot>
+    </Graph>
+  `);
+  const calls = [];
+  const documentRef = {
+    createElementNS(_namespace, tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    },
+    createElement(tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    }
+  };
+  const svg = createMockNode("svg");
+  svg.ownerDocument = documentRef;
+
+  renderGraph(svg, graph, { document: documentRef });
+
+  const nestedPlot = calls.find((node) => node.tag === "svg" && node.attrs.class === "plot-node");
+  const frame = calls.find((node) => node.tag === "rect" && node.attrs.class === "plot-frame");
+  const plotBox = calls.find((node) => node.tag === "rect" && node.attrs.class === "plot-box");
+  const plotLine = calls.find((node) => node.tag === "path" && node.attrs.class === "plot-line");
+
+  assert.ok(nestedPlot);
+  assert.equal(nestedPlot.attrs.x, 80);
+  assert.equal(nestedPlot.attrs.y, 80);
+  assert.equal(nestedPlot.attrs.width, 240);
+  assert.equal(nestedPlot.attrs.height, 160);
+  assert.equal(nestedPlot.attrs.viewBox, "0 0 240 160");
+  assert.ok(frame);
+  assert.ok(plotBox);
+  assert.ok(plotLine);
+});
+
 test("rejects cyclic port placement", () => {
   assert.throws(
     () => parseGraph(`

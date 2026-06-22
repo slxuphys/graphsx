@@ -428,6 +428,10 @@ function resolvePoints(element, data = new Map()) {
     return generatePointsFromX(element);
   }
 
+  if (isMathSource(element.attrs.x) && isMathSource(element.attrs.y)) {
+    return generateParametricPointsFromDomain(element);
+  }
+
   if (isMathSource(element.attrs.y)) {
     return generatePointsFromDomain(element);
   }
@@ -455,7 +459,7 @@ function normalizePoint(point, propName) {
 }
 
 function generatePointsFromX(element) {
-  const variable = String(element.attrs.var ?? "x");
+  const variable = dataVariable(element, "x");
   const expression = String(element.attrs.y);
   const params = paramsScope(element);
 
@@ -469,7 +473,7 @@ function generatePointsFromX(element) {
 }
 
 function generatePointsFromDomain(element) {
-  const variable = String(element.attrs.var ?? "x");
+  const variable = dataVariable(element, "x");
   const expression = String(element.attrs.y);
   const domain = numericPair(element.attrs.domain, `<${element.name}> domain`);
   const samples = Math.max(2, Math.floor(Number(element.attrs.samples ?? 100)));
@@ -489,6 +493,29 @@ function generatePointsFromDomain(element) {
   });
 }
 
+function generateParametricPointsFromDomain(element) {
+  const variable = dataVariable(element, "t");
+  const xExpression = String(element.attrs.x);
+  const yExpression = String(element.attrs.y);
+  const domain = numericPair(element.attrs.domain, `<${element.name}> domain`);
+  const samples = Math.max(2, Math.floor(Number(element.attrs.samples ?? 100)));
+  if (!Number.isFinite(samples)) {
+    throw new GraphDslError(`<${element.name}> samples must be a finite number`);
+  }
+  const params = paramsScope(element);
+  const [min, max] = domain;
+  const step = samples === 1 ? 0 : (max - min) / (samples - 1);
+
+  return Array.from({ length: samples }, (_unused, index) => {
+    const value = min + step * index;
+    const scope = new Map([...params, [variable, value]]);
+    return {
+      x: evaluateMathExpression(xExpression, scope, `<${element.name}> x`),
+      y: evaluateMathExpression(yExpression, scope, `<${element.name}> y`)
+    };
+  });
+}
+
 export function regeneratePlotData(source, overrides = {}) {
   if (!source?.generated) {
     throw new GraphDslError(`Only generated <Data> can be animated`);
@@ -499,6 +526,19 @@ export function regeneratePlotData(source, overrides = {}) {
       throw new GraphDslError(`Animation variable "${key}" is not declared in <Data id="${source.id}"> params`);
     }
     params.set(key, numberValue(value, `animation param "${key}"`));
+  }
+
+  if (source.kind === "parametric") {
+    const [min, max] = source.domain;
+    const step = source.samples === 1 ? 0 : (max - min) / (source.samples - 1);
+    return Array.from({ length: source.samples }, (_unused, index) => {
+      const value = min + step * index;
+      const scope = new Map([...params, [source.variable, value]]);
+      return {
+        x: evaluateMathExpression(source.xExpression, scope, `<Data id="${source.id}"> x`),
+        y: evaluateMathExpression(source.yExpression, scope, `<Data id="${source.id}"> y`)
+      };
+    });
   }
 
   if (Array.isArray(source.x)) {
@@ -520,6 +560,10 @@ export function regeneratePlotData(source, overrides = {}) {
       y: evaluateMathExpression(source.expression, new Map([...params, [source.variable, x]]), `<Data id="${source.id}"> y`)
     };
   });
+}
+
+function dataVariable(element, fallback) {
+  return String(element.attrs.variable ?? element.attrs.var ?? fallback);
 }
 
 function paramsScope(element) {
@@ -783,11 +827,33 @@ function buildDataRecord(element, id) {
     return {
       id,
       generated: true,
-      variable: String(element.attrs.var ?? "x"),
+      kind: "function-x",
+      variable: dataVariable(element, "x"),
       expression: String(element.attrs.y),
       params,
       x: element.attrs.x.slice(),
       points: generatePointsFromX(element)
+    };
+  }
+
+  if (isMathSource(element.attrs.x) && isMathSource(element.attrs.y)) {
+    const domain = numericPair(element.attrs.domain, `<${element.name}> domain`);
+    const samples = Math.max(2, Math.floor(Number(element.attrs.samples ?? 100)));
+    if (!Number.isFinite(samples)) {
+      throw new GraphDslError(`<${element.name}> samples must be a finite number`);
+    }
+    const params = Object.fromEntries(paramsScope(element));
+    return {
+      id,
+      generated: true,
+      kind: "parametric",
+      variable: dataVariable(element, "t"),
+      xExpression: String(element.attrs.x),
+      yExpression: String(element.attrs.y),
+      params,
+      domain,
+      samples,
+      points: generateParametricPointsFromDomain(element)
     };
   }
 
@@ -801,7 +867,8 @@ function buildDataRecord(element, id) {
     return {
       id,
       generated: true,
-      variable: String(element.attrs.var ?? "x"),
+      kind: "function-domain",
+      variable: dataVariable(element, "x"),
       expression: String(element.attrs.y),
       params,
       domain,

@@ -32,13 +32,17 @@ export function renderPlot(svg, plot, options = {}) {
   const defs = el(context, "defs");
   defs.append(drawPlotClipPath(context, clipId));
   appendArrowMarkers(context, defs);
+  const frameLayer = el(context, "g", { class: "plot-frame-layer" });
   const axisLayer = el(context, "g", { class: "plot-axes" });
   const dataLayer = el(context, "g", { class: "plot-data", clipPath: `url(#${clipId})` });
   const annotationLayer = el(context, "g", { class: "plot-annotations" });
   const labelLayer = el(context, "g", { class: "plot-labels" });
   const legendLayer = el(context, "g", { class: "plot-legends" });
-  svg.append(defs, axisLayer, dataLayer, annotationLayer, labelLayer, legendLayer);
+  svg.append(defs, frameLayer, axisLayer, dataLayer, annotationLayer, labelLayer, legendLayer);
 
+  if (booleanAttr(plot.attrs.frame, false)) {
+    frameLayer.append(drawPlotFrame(context));
+  }
   if (booleanAttr(plot.attrs.box, false)) {
     axisLayer.append(drawPlotBox(context));
   }
@@ -268,6 +272,19 @@ function drawPlotBox(context) {
     fill: "none",
     stroke: "#26312d",
     strokeWidth: 1.5
+  });
+}
+
+function drawPlotFrame(context) {
+  return styledEl(context, "rect", context.plot.attrs.frameStyle ?? context.plot.attrs.framestyle, {
+    class: "plot-frame",
+    x: 0,
+    y: 0,
+    width: context.width,
+    height: context.height,
+    fill: "none",
+    stroke: "#cbd5d0",
+    strokeWidth: 1
   });
 }
 

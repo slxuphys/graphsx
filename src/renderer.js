@@ -1,3 +1,5 @@
+import { renderPlot } from "./plot-renderer.js";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 export function renderGraph(svg, graph, options = {}) {
@@ -137,6 +139,23 @@ function drawShape(context, node, offsetX, offsetY) {
   }
 
   const transform = node.transform ? viewportMatrixAttr(node.transform, offsetX, offsetY) : null;
+  if (node.shape === "plot") {
+    const plotSvg = styledEl(context, "svg", node.attrs.style, {
+      class: "plot-node",
+      x: node.transform ? node.x : node.x + offsetX,
+      y: node.transform ? node.y : node.y + offsetY,
+      width: Number(node.attrs.width ?? node.attrs.w ?? 720),
+      height: Number(node.attrs.height ?? node.attrs.h ?? 420),
+      overflow: "visible",
+      ...(transform ? { transform } : {})
+    });
+    renderPlot(plotSvg, node.plot, {
+      document: context.document,
+      katex: context.katex
+    });
+    return plotSvg;
+  }
+
   if (node.shape === "circle") {
     const r = Number(node.attrs.r ?? 28);
     return styledEl(context, "circle", node.attrs.style, {

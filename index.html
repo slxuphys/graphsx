@@ -74,6 +74,7 @@
         color: #ffffff;
         background: #1f342f;
         font: 800 13px/1 ui-sans-serif, system-ui, sans-serif;
+        text-decoration: none;
       }
 
       .brand-copy {
@@ -96,6 +97,34 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      .header-tabs {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 3px;
+        background: #f7f8f5;
+      }
+
+      .header-tab {
+        min-width: 84px;
+        height: 30px;
+        border: 0;
+        border-radius: 6px;
+        padding: 0 12px;
+        color: var(--muted);
+        background: transparent;
+        font: 700 13px/1 ui-sans-serif, system-ui, sans-serif;
+        cursor: pointer;
+      }
+
+      .header-tab[aria-selected="true"] {
+        color: #12352c;
+        background: #ffffff;
+        box-shadow: 0 1px 2px rgba(16, 24, 20, 0.08);
       }
 
       .header-actions {
@@ -131,6 +160,23 @@
 
       .app.live-preview-mode .render-pane {
         display: none;
+      }
+
+      .app.docs-mode .workspace,
+      .app.docs-mode.syntax-collapsed .workspace {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .app.docs-mode .syntax-pane,
+      .app.docs-mode .editor-pane,
+      .app.docs-mode .editor-host,
+      .app.docs-mode .editor-pane .footer,
+      .app.docs-mode .render-pane {
+        display: none;
+      }
+
+      .app.docs-mode .docs-pane {
+        display: grid;
       }
 
       .pane {
@@ -319,12 +365,14 @@
       .syntax-section {
         display: grid;
         gap: 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 13px;
+        background: #ffffff;
       }
 
       .syntax-section + .syntax-section {
-        margin-top: 18px;
-        padding-top: 16px;
-        border-top: 1px solid var(--line);
+        margin-top: 12px;
       }
 
       .syntax-section h2 {
@@ -338,6 +386,12 @@
       .syntax-grid {
         display: grid;
         gap: 8px;
+      }
+
+      .syntax-grid > div {
+        border-radius: 6px;
+        padding: 7px 8px;
+        background: #f7f8f5;
       }
 
       .syntax-guide code {
@@ -355,6 +409,144 @@
         grid-template-rows: auto 1fr;
         min-height: 0;
         overflow: hidden;
+      }
+
+      .docs-pane {
+        display: none;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .docs-content {
+        overflow: auto;
+        padding: 28px 34px 44px;
+        color: #1e2724;
+        background: #fbfcfa;
+      }
+
+      .docs-layout {
+        display: grid;
+        gap: 26px;
+        max-width: 1180px;
+        margin: 0 auto;
+      }
+
+      .docs-hero {
+        display: grid;
+        gap: 8px;
+      }
+
+      .docs-hero h2,
+      .docs-section h2,
+      .docs-section h3 {
+        margin: 0;
+        color: var(--ink);
+        letter-spacing: 0;
+      }
+
+      .docs-hero h2 {
+        font-size: 26px;
+      }
+
+      .docs-hero p {
+        max-width: 760px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+
+      .docs-note {
+        border: 1px solid #cddbd2;
+        border-radius: 8px;
+        padding: 13px 14px;
+        color: #22352f;
+        background: #f1f7f4;
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .docs-section {
+        display: grid;
+        gap: 14px;
+      }
+
+      .docs-section h2 {
+        font-size: 18px;
+      }
+
+      .docs-section h3 {
+        font-size: 14px;
+      }
+
+      .docs-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+        gap: 12px;
+      }
+
+      .docs-card {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px;
+        background: #ffffff;
+      }
+
+      .docs-card p {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .docs-table {
+        width: 100%;
+        border-collapse: collapse;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+        background: #ffffff;
+        font-size: 13px;
+      }
+
+      .docs-table th,
+      .docs-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .docs-table th {
+        color: var(--ink);
+        background: #f2f5f1;
+        font-weight: 750;
+      }
+
+      .docs-table tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .docs-content code {
+        border-radius: 4px;
+        padding: 2px 5px;
+        color: #17211e;
+        background: #eef2ee;
+        font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      }
+
+      .docs-content pre {
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 13px;
+        background: #f7f8f5;
+      }
+
+      .docs-content pre code {
+        padding: 0;
+        background: transparent;
       }
 
       .canvas-wrap {
@@ -577,7 +769,9 @@
         .workspace,
         .app.syntax-collapsed .workspace,
         .app.live-preview-mode .workspace,
-        .app.live-preview-mode.syntax-collapsed .workspace {
+        .app.live-preview-mode.syntax-collapsed .workspace,
+        .app.docs-mode .workspace,
+        .app.docs-mode.syntax-collapsed .workspace {
           grid-template-columns: 1fr;
         }
 
@@ -586,7 +780,8 @@
         }
 
         .app.syntax-collapsed .workspace,
-        .app.live-preview-mode .workspace {
+        .app.live-preview-mode .workspace,
+        .app.docs-mode .workspace {
           grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
         }
 
@@ -604,15 +799,17 @@
     <main class="app">
       <header class="app-header">
         <div class="brand">
-          <div class="brand-mark" aria-hidden="true">SX</div>
+          <a class="brand-mark" href="https://github.com/slxuphys/graphsx" target="_blank" rel="noreferrer" title="Open repository">SX</a>
           <div class="brand-copy">
             <div class="brand-title">GraphSX Playground</div>
             <div class="brand-subtitle">GraphSX, Markdown fences, and live editor widgets</div>
           </div>
         </div>
+        <nav class="header-tabs" aria-label="Primary view">
+          <button class="header-tab" id="editorTab" type="button" aria-selected="true">Editor</button>
+          <button class="header-tab" id="docsTab" type="button" aria-selected="false">Docs</button>
+        </nav>
         <div class="header-actions">
-          <button class="icon-button" id="syntaxToggle" type="button" aria-controls="syntaxPane" aria-expanded="true" aria-pressed="true" title="Toggle syntax reference">Syntax</button>
-          <a class="icon-button" href="https://github.com/slxuphys/graphsx" target="_blank" rel="noreferrer" title="Open repository">Repo</a>
         </div>
       </header>
 
@@ -623,11 +820,19 @@
         </div>
         <div class="syntax-guide">
           <section class="syntax-section">
+            <h2>Mental Model</h2>
+            <div class="syntax-grid">
+              <div>JSX-like tags with static props: <code>&lt;Rect id="A" at={[0, 0]} /&gt;</code></div>
+              <div>Inline style or reusable library: <code>style={{ strokeWidth: 2 }}</code>, <code>useStyle="wire"</code></div>
+              <div>Use <code>&lt;Plot&gt;</code> alone for one plot; place <code>&lt;Plot&gt;</code> inside <code>&lt;Graph&gt;</code> for subplots.</div>
+            </div>
+          </section>
+          <section class="syntax-section">
             <h2>Shapes</h2>
             <div class="syntax-grid">
-              <div><code>&lt;Rect at={[x, y]} size={[w, h]} /&gt;</code></div>
+              <div><code>&lt;Rect id="A" at={[x, y]} size={[w, h]} /&gt;</code></div>
               <div><code>&lt;Rect corner={0} /&gt;</code></div>
-              <div><code>&lt;Circle at={[x, y]} r={40} /&gt;</code></div>
+              <div><code>&lt;Circle id="B" at={[x, y]} r={40} /&gt;</code></div>
               <div><code>&lt;Point id="J" at={[x, y]} /&gt;</code></div>
             </div>
           </section>
@@ -657,6 +862,16 @@
               <div><code>&lt;Path d="M 90 80 L 180 80" /&gt;</code></div>
             </div>
             <div>Use paths for exact wire geometry; use links for port-to-port connections.</div>
+          </section>
+          <section class="syntax-section">
+            <h2>Plots</h2>
+            <div class="syntax-grid">
+              <div><code>&lt;Plot width={560} height={340} frame box&gt;</code></div>
+              <div><code>&lt;Axis x label="$x$" ticks grid /&gt;</code></div>
+              <div><code>&lt;Data id="sin" y="sin(x)" domain={[0, 2*pi]} /&gt;</code></div>
+              <div><code>&lt;Line data="sin" label="$\\sin(x)$" /&gt;</code></div>
+              <div><code>&lt;Graph&gt;&lt;Plot id="p" at={[0, 0]} ... /&gt;&lt;/Graph&gt;</code></div>
+            </div>
           </section>
           <section class="syntax-section">
             <h2>Layout</h2>
@@ -723,6 +938,7 @@
                 <option value="liveMarkdown">Live Preview</option>
               </select>
               <select id="example" aria-label="Load example"></select>
+              <button class="icon-button" id="syntaxToggle" type="button" aria-controls="syntaxPane" aria-expanded="true" aria-pressed="true" title="Toggle quick syntax">Syntax</button>
             </div>
           </div>
         </div>
@@ -747,6 +963,266 @@
         <div class="canvas-wrap">
           <div id="markdownPreview" class="markdown-preview" hidden></div>
           <svg id="graph" role="img" aria-label="Rendered graph canvas"></svg>
+        </div>
+      </section>
+
+      <section class="pane docs-pane" aria-label="GraphSX documentation">
+        <div class="toolbar">
+          <h1>Documentation</h1>
+          <div id="docsSummary" class="status">Supported tags and examples</div>
+        </div>
+        <div class="docs-content">
+          <div class="docs-layout">
+            <section class="docs-hero">
+              <h2>GraphSX Reference</h2>
+              <p>GraphSX has two entry points. Use a standalone <code>&lt;Plot&gt;</code> for one scientific plot. Use <code>&lt;Graph&gt;</code> as a figure canvas for diagrams, subplots, mixed plot-and-diagram figures, and port-to-port links.</p>
+              <div class="docs-note">The syntax is intentionally JSX-like. If you already understand JSX, the shape should feel familiar: tags define components, props configure them, children nest inside parents, braces hold static values or arithmetic expressions, and backtick strings support template substitution.</div>
+              <div class="docs-note">Most visible components can be styled either inline with <code>style={{ ... }}</code> or through reusable style libraries: define <code>&lt;Style id="wire" stroke="#111" /&gt;</code>, then apply it with <code>useStyle="wire"</code>. Plot-specific boxes can also use dedicated props such as <code>frameStyle</code>, <code>boxStyle</code>, <code>textStyle</code>, and <code>labelStyle</code>.</div>
+            </section>
+
+            <section class="docs-section">
+              <h2>Top-Level Documents</h2>
+              <div class="docs-grid">
+                <div class="docs-card">
+                  <h3><code>&lt;Graph&gt;</code></h3>
+                  <p>Auto-sized figure canvas for nodes, links, paths, reusable shapes, repeats, and nested plots.</p>
+                </div>
+                <div class="docs-card">
+                  <h3><code>&lt;Plot&gt;</code></h3>
+                  <p>Fixed-size plot figure with axes, ticks, data, lines, markers, legends, annotations, and optional animation.</p>
+                </div>
+              </div>
+            </section>
+
+            <section class="docs-section">
+              <h2>Coordinates, Ports, And Addresses</h2>
+              <div class="docs-grid">
+                <div class="docs-card">
+                  <h3><code>at</code> Places Things</h3>
+                  <p>In <code>Graph</code>, <code>at</code> uses figure screen units. It can be a literal point, a referenced port, or a referenced port plus vector arithmetic. Inside a <code>Plot</code>, annotation <code>at</code> uses data units by default; use <code>atUnit="screen"</code> for plot-pixel placement.</p>
+                  <pre><code>// Graph placement
+&lt;Rect id="A" at={[80, 120]} size={[100, 60]} /&gt;
+&lt;Rect id="B" at={A.right + [80, -20]} size={[100, 60]} /&gt;
+&lt;Rect id="C" at={B.top} anchor="bottom" size={[80, 40]} /&gt;
+
+// Plot annotation placement
+&lt;Circle id="m" at={[2, 4]} r={5} /&gt;
+&lt;Text at={[2, 4]} label="peak" /&gt;
+&lt;Rect id="note" at={[430, 86]} atUnit="screen" size={[90, 28]} /&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3><code>from</code> / <code>to</code> Connect Ports</h3>
+                  <p><code>Link</code> connects ports by quoted address in both <code>Graph</code> and plot annotations. This keeps links semantic: <code>"A.right"</code> means a port address, while <code>{A.right}</code> means a coordinate expression and is used for placement. Plot annotation shapes can expose ports just like graph nodes.</p>
+                  <pre><code>// Graph links
+&lt;Link from="A.right" to="B.left" /&gt;
+&lt;Link from="P1.child.out" to="P2.in" headArrow /&gt;
+
+// Plot annotation links
+&lt;Rect id="note" at={[3.2, 7.8]} size={[80, 28]}&gt;
+  &lt;Port id="tip" left /&gt;
+&lt;/Rect&gt;
+&lt;Circle id="peak" at={[3, 7]} r={5} /&gt;
+&lt;Link from="note.tip" to="peak.top" headArrow /&gt;</code></pre>
+                </div>
+              </div>
+            </section>
+
+            <section class="docs-section">
+              <h2>Repeat Syntax</h2>
+              <div class="docs-grid">
+                <div class="docs-card">
+                  <h3>Linear Repeat</h3>
+                  <p><code>Repeat</code> expands its children <code>count</code> times. The variable named by <code>as</code> is available inside braces and backtick strings. <code>step</code> offsets repeated graph children.</p>
+                  <pre><code>&lt;Repeat count={4} as="i" step={[90, 0]}&gt;
+  &lt;Rect id={`box${i}`} at={[80, 120]} size={[60, 40]} label={`$A_${i}$`} /&gt;
+&lt;/Repeat&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3>Links Inside Repeat</h3>
+                  <p>Links can be generated too. Use backtick strings when a port address depends on the repeat index.</p>
+                  <pre><code>&lt;Repeat count={3} as="i"&gt;
+  &lt;Link from={`box${i}.right`} to={`box${i+1}.left`} /&gt;
+&lt;/Repeat&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3>Nested Repeat</h3>
+                  <p>Nested repeats are useful for grids. Give each level a different variable name.</p>
+                  <pre><code>&lt;Repeat count={3} as="row" step={[0, 80]}&gt;
+  &lt;Repeat count={4} as="col" step={[90, 0]}&gt;
+    &lt;Rect id={`n${row}_${col}`} at={[60, 60]} size={[52, 36]} /&gt;
+  &lt;/Repeat&gt;
+&lt;/Repeat&gt;</code></pre>
+                </div>
+              </div>
+            </section>
+
+            <section class="docs-section">
+              <h2>Routing And Layout</h2>
+              <div class="docs-grid">
+                <div class="docs-card">
+                  <h3>Routing</h3>
+                  <p><code>route</code> controls link geometry. Use <code>straight</code> for direct segments, <code>orthogonal</code> for right-angle turns, and <code>auto</code> for simple obstacle-aware orthogonal routing. Per-link props override graph defaults.</p>
+                  <pre><code>&lt;Graph route="orthogonal" corner={8}&gt;
+  &lt;Link from="A.right" to="B.left" /&gt;
+  &lt;Link from="B.bottom" to="C.top" route="auto" grid={20} padding={18} /&gt;
+&lt;/Graph&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3>Layout</h3>
+                  <p>Explicit <code>at</code> positions always win. When positions are omitted, <code>layout="row"</code> places nodes in source order, while <code>layout="dag"</code> uses links to rank connected nodes.</p>
+                  <pre><code>&lt;Graph layout="dag" direction="right" rankGap={180} nodeGap={80}&gt;
+  &lt;Rect id="A" size={[90, 50]} /&gt;
+  &lt;Rect id="B" size={[90, 50]} /&gt;
+  &lt;Rect id="C" size={[90, 50]} /&gt;
+  &lt;Link from="A.right" to="B.left" /&gt;
+  &lt;Link from="A.right" to="C.left" /&gt;
+&lt;/Graph&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3>Ports And Angles</h3>
+                  <p>Side ports provide default routing directions. Custom ports can set <code>angle</code>, which gives orthogonal and auto routes a preferred direction as they leave or enter the shape.</p>
+                  <pre><code>&lt;Port id="tap" at={[60, 20]} angle={35} /&gt;
+&lt;Link from="A.tap" to="B.left" route="orthogonal" /&gt;</code></pre>
+                </div>
+              </div>
+            </section>
+
+            <section class="docs-section">
+              <h2>Data Tag</h2>
+              <div class="docs-grid">
+                <div class="docs-card">
+                  <h3>Literal Data</h3>
+                  <p>Use <code>points</code> for explicit pairs, or separate <code>x</code> and <code>y</code> arrays when that is clearer.</p>
+                  <pre><code>&lt;Data id="raw" points={[[0, 1], [1, 2], [2, 4]]} /&gt;
+&lt;Data id="xy" x={[0, 1, 2]} y={[1, 2, 4]} /&gt;
+&lt;Line data="raw" fmt=".-" /&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3>Function Data</h3>
+                  <p>A string <code>y</code> expression generates sampled data over <code>domain</code>. The default variable is <code>x</code>. Constants and math helpers include <code>pi</code>, <code>sin</code>, <code>cos</code>, <code>exp</code>, <code>sqrt</code>, and <code>pow</code>.</p>
+                  <pre><code>&lt;Data id="sin" y="sin(x)" domain={[0, 2*pi]} samples={160} /&gt;
+&lt;Line data="sin" label="$\\sin(x)$" /&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3>Parametric Data</h3>
+                  <p>When both <code>x</code> and <code>y</code> are expressions, GraphSX samples a parameter. The default variable is <code>t</code>; override it with <code>variable</code>.</p>
+                  <pre><code>&lt;Data
+  id="heart"
+  x="16 * pow(sin(t), 3)"
+  y="13*cos(t) - 5*cos(2*t) - 2*cos(3*t) - cos(4*t)"
+  domain={[0, 2*pi]}
+  samples={420}
+/&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3>Parameters</h3>
+                  <p><code>params</code> declares extra symbols used in generated data. This makes expressions explicit and gives animation a known starting value.</p>
+                  <pre><code>&lt;Data
+  id="fit"
+  y="a * exp(-b*x)"
+  params={{ a: 2.6, b: 0.28 }}
+  domain={[0, 10]}
+/&gt;</code></pre>
+                </div>
+              </div>
+            </section>
+
+            <section class="docs-section">
+              <h2>Animation</h2>
+              <div class="docs-grid">
+                <div class="docs-card">
+                  <h3>Animated Series</h3>
+                  <p>Animation belongs to the rendered series. The series references a <code>Data</code> object, then animates one or more declared data parameters.</p>
+                  <pre><code>&lt;Data id="wave" y="sin(x - phase)" params={{ phase: 0 }} domain={[0, 2*pi]} /&gt;
+&lt;Line
+  data="wave"
+  animate={{ phase: [0, 2*pi] }}
+  duration={2600}
+/&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3>How It Updates</h3>
+                  <p>The plot is rendered once with animation metadata. During playback, GraphSX regenerates the affected series data for the current frame and updates that SVG series, leaving unrelated page DOM alone.</p>
+                </div>
+                <div class="docs-card">
+                  <h3>Multiple Parameters</h3>
+                  <p>Each animated series owns its own parameter values. Different lines can animate the same parameter name independently because the values are scoped to their data source and series.</p>
+                  <pre><code>&lt;Line data="waveA" animate={{ phase: [0, 2*pi] }} /&gt;
+&lt;Line data="waveB" animate={{ phase: [pi, 3*pi] }} /&gt;</code></pre>
+                </div>
+              </div>
+            </section>
+
+            <section class="docs-section">
+              <h2>Supported Tags And Children</h2>
+              <table class="docs-table">
+                <thead>
+                  <tr>
+                    <th>Tag</th>
+                    <th>Where</th>
+                    <th>Allowed Children</th>
+                    <th>Key Props</th>
+                    <th>Purpose</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td><code>Graph</code></td><td>Top level</td><td><code>Style</code>, <code>Shape</code>, <code>Rect</code>, <code>Circle</code>, <code>Point</code>, <code>Anchor</code>, <code>Plot</code>, <code>Link</code>, <code>Path</code>, <code>Repeat</code></td><td><code>route</code>, <code>layout</code>, <code>direction</code>, <code>x</code>, <code>y</code>, <code>gap</code>, <code>rankGap</code>, <code>nodeGap</code>, <code>grid</code>, <code>padding</code>, <code>corner</code></td><td>General diagram and figure canvas.</td></tr>
+                  <tr><td><code>Rect</code></td><td><code>Graph</code>, <code>Shape</code>, plot annotations</td><td><code>Port</code></td><td><code>id</code>, <code>at</code>, <code>x</code>, <code>y</code>, <code>size</code>, <code>w</code>, <code>h</code>, <code>label</code>, <code>corner</code>, <code>anchor</code>, <code>origin</code>, <code>rotate</code>, <code>flipX</code>, <code>flipY</code>, <code>style</code>, <code>useStyle</code></td><td>Rectangle node with default side ports.</td></tr>
+                  <tr><td><code>Circle</code></td><td><code>Graph</code>, <code>Shape</code>, plot annotations</td><td><code>Port</code></td><td><code>id</code>, <code>at</code>, <code>x</code>, <code>y</code>, <code>r</code>, <code>label</code>, <code>anchor</code>, <code>origin</code>, <code>rotate</code>, <code>flipX</code>, <code>flipY</code>, <code>style</code>, <code>useStyle</code></td><td>Circle node with default side ports.</td></tr>
+                  <tr><td><code>Point</code>, <code>Anchor</code></td><td><code>Graph</code>, <code>Shape</code></td><td><code>Port</code></td><td><code>id</code>, <code>at</code>, <code>x</code>, <code>y</code>, <code>label</code>, <code>r</code>, <code>style</code>, <code>useStyle</code></td><td>Shapeless anchor with default <code>center</code> port.</td></tr>
+                  <tr><td><code>Plot</code></td><td>Top level, <code>Graph</code></td><td><code>Port</code> in graph use; plot children such as <code>Data</code>, <code>Axis</code>, <code>Line</code>, <code>Legend</code>, annotation tags</td><td><code>id</code>, <code>at</code>, <code>width</code>, <code>height</code>, <code>padding</code>, <code>xDomain</code>, <code>yDomain</code>, <code>frame</code>, <code>frameStyle</code>, <code>box</code>, <code>style</code></td><td>Standalone plot or placed subplot panel.</td></tr>
+                  <tr><td><code>Port</code>, <code>Leg</code></td><td>Nodes, shapes, nested graph plots</td><td>None</td><td><code>id</code>, <code>left</code>, <code>right</code>, <code>top</code>, <code>bottom</code>, <code>side</code>, <code>at</code>, <code>x</code>, <code>y</code>, <code>angle</code>, <code>target</code>, <code>label</code>, <code>r</code>, <code>style</code>, <code>useStyle</code></td><td>Defines a connection point.</td></tr>
+                  <tr><td><code>Link</code></td><td><code>Graph</code>, <code>Shape</code>, plot annotations</td><td>None</td><td><code>from</code>, <code>to</code>, <code>route</code>, <code>grid</code>, <code>padding</code>, <code>corner</code>, <code>headArrow</code>, <code>tailArrow</code>, <code>arrowSize</code>, <code>style</code>, <code>useStyle</code></td><td>Connects quoted port addresses such as <code>"A.right"</code>.</td></tr>
+                  <tr><td><code>Path</code></td><td><code>Graph</code>, <code>Shape</code>, plot annotations</td><td>None</td><td><code>id</code>, <code>points</code>, <code>d</code>, <code>at</code>, <code>corner</code>, <code>closed</code>, <code>headArrow</code>, <code>tailArrow</code>, <code>arrowSize</code>, <code>rotate</code>, <code>flipX</code>, <code>flipY</code>, <code>style</code>, <code>useStyle</code></td><td>Explicit geometry from <code>points</code> or SVG <code>d</code>.</td></tr>
+                  <tr><td><code>Shape</code></td><td><code>Graph</code>, libraries</td><td>Graph node tags, <code>Port</code>, <code>Link</code>, <code>Path</code>, <code>Repeat</code></td><td><code>id</code>, <code>from</code>, <code>groupBox</code>, plus user-defined props forwarded to children</td><td>Reusable composite shape definition.</td></tr>
+                  <tr><td><code>Repeat</code></td><td><code>Graph</code>, <code>Shape</code></td><td>Any repeatable graph or shape child</td><td><code>count</code>, <code>as</code>, <code>step</code></td><td>Expands repeated nodes, links, and paths with an index variable.</td></tr>
+                  <tr><td><code>Style</code></td><td><code>Graph</code>, <code>Plot</code>, libraries</td><td>None</td><td><code>id</code>, plus SVG style props such as <code>fill</code>, <code>stroke</code>, <code>strokeWidth</code>, <code>opacity</code>, <code>strokeDasharray</code></td><td>Reusable style referenced by <code>useStyle</code>.</td></tr>
+                  <tr><td><code>Data</code></td><td><code>Plot</code></td><td>None</td><td><code>id</code>, <code>points</code>, <code>x</code>, <code>y</code>, <code>domain</code>, <code>samples</code>, <code>params</code>, <code>variable</code></td><td>Named data from points, x/y arrays, generated functions, or parametric expressions.</td></tr>
+                  <tr><td><code>Axis</code></td><td><code>Plot</code></td><td><code>Ticks</code></td><td><code>x</code>, <code>y</code>, <code>label</code>, <code>ticks</code>, <code>grid</code>, <code>labelGap</code>, <code>tickGap</code>, <code>tickSize</code>, <code>style</code>, <code>labelStyle</code></td><td>X or Y axis with labels, ticks, and grid.</td></tr>
+                  <tr><td><code>Ticks</code></td><td><code>Axis</code></td><td>None</td><td><code>values</code>, <code>labels</code>, <code>grid</code>, <code>labelGap</code>, <code>tickSize</code>, <code>style</code>, <code>labelStyle</code></td><td>Explicit tick values and optional labels.</td></tr>
+                  <tr><td><code>Line</code>, <code>Curve</code></td><td><code>Plot</code></td><td>None</td><td><code>data</code>, <code>points</code>, <code>x</code>, <code>y</code>, <code>fmt</code>, <code>label</code>, <code>animate</code>, <code>stroke</code>, <code>strokeWidth</code>, <code>fill</code>, <code>r</code>, <code>style</code>, <code>useStyle</code></td><td>Draws data as connected series.</td></tr>
+                  <tr><td><code>Mark</code>, <code>Point</code>, <code>Scatter</code></td><td><code>Plot</code></td><td>None</td><td><code>data</code>, <code>at</code>, <code>points</code>, <code>x</code>, <code>y</code>, <code>r</code>, <code>label</code>, <code>animate</code>, <code>fill</code>, <code>stroke</code>, <code>style</code>, <code>useStyle</code></td><td>Draws data as markers.</td></tr>
+                  <tr><td><code>Text</code>, <code>Label</code></td><td><code>Plot</code></td><td>None</td><td><code>at</code>, <code>label</code>, <code>fontSize</code>, <code>anchor</code>, <code>baseline</code>, <code>rotate</code>, <code>style</code>, <code>useStyle</code></td><td>Text or KaTeX label at data coordinates.</td></tr>
+                  <tr><td><code>Legend</code></td><td><code>Plot</code></td><td>None</td><td><code>position</code>, <code>box</code>, <code>padding</code>, <code>margin</code>, <code>fontSize</code>, <code>textStyle</code>, <code>boxStyle</code></td><td>Legend generated from labeled series.</td></tr>
+                </tbody>
+              </table>
+              <div class="docs-note">Canonical tags use PascalCase. Accepted aliases include <code>rect</code>/<code>Rec</code>/<code>rec</code> for <code>Rect</code>, <code>circle</code>/<code>Circ</code>/<code>circ</code> for <code>Circle</code>, <code>point</code>, <code>anchor</code>, <code>path</code>, <code>Dataset</code>, <code>XAxis</code>, <code>YAxis</code>, <code>ticks</code>, <code>Series</code>, and <code>legend</code>. New examples should prefer the canonical form.</div>
+              <div class="docs-note">For generated <code>Data</code>, <code>y="..."</code> samples the variable <code>x</code> by default. Parametric data uses both <code>x="..."</code> and <code>y="..."</code>, samples <code>t</code> by default, and can override that with <code>variable="theta"</code>.</div>
+            </section>
+
+            <section class="docs-section">
+              <h2>Common Patterns</h2>
+              <div class="docs-grid">
+                <div class="docs-card">
+                  <h3>Placed Subplot</h3>
+                  <pre><code>&lt;Graph&gt;
+  &lt;Plot id="p" at={[0, 0]} width={360} height={240} frame box&gt;
+    &lt;Port id="out" right /&gt;
+    &lt;Axis x ticks /&gt;
+    &lt;Axis y ticks /&gt;
+    &lt;Line points={[[0, 0], [1, 1]]} /&gt;
+  &lt;/Plot&gt;
+&lt;/Graph&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3>Generated Function Data</h3>
+                  <pre><code>&lt;Plot width={560} height={340} xDomain={[0, 2*pi]} yDomain={[-1, 1]} box&gt;
+  &lt;Data id="sin" y="sin(x)" domain={[0, 2*pi]} samples={160} /&gt;
+  &lt;Line data="sin" label="$\\sin(x)$" /&gt;
+&lt;/Plot&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3>Reusable Shape</h3>
+                  <pre><code>&lt;Shape id="Tensor" groupBox={false}&gt;
+  &lt;Rect id="box" size={[56, 56]} label={label} /&gt;
+  &lt;Port id="left" target="box.left" /&gt;
+&lt;/Shape&gt;
+
+&lt;Tensor id="A0" label="$A$" /&gt;</code></pre>
+                </div>
+              </div>
+            </section>
+          </div>
         </div>
       </section>
       </div>

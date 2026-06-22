@@ -18,6 +18,7 @@ import {
   templateLiteral
 } from "./literals.js";
 import { parseMarkup } from "./markup.js";
+import { buildPlotModel } from "./plot.js";
 
 const BUILTIN_SHAPE_TAGS = new Map([
   ["Rect", "rect"],
@@ -33,6 +34,7 @@ const BUILTIN_SHAPE_TAGS = new Map([
   ["Anchor", "point"],
   ["anchor", "point"]
 ]);
+const PLOT_TAGS = new Set(["Plot"]);
 const EDGE_TAGS = new Set(["Link"]);
 const PATH_TAGS = new Set(["Path", "path"]);
 const PORT_TAGS = new Set(["Port", "Leg"]);
@@ -124,7 +126,8 @@ function buildNode(nodeElement, shapes, styles, context) {
     legs: {},
     children: [],
     edges: [],
-    paths: []
+    paths: [],
+    plot: normalized.plot ?? null
   };
 
   if (shapes.has(normalized.shape)) {
@@ -208,7 +211,7 @@ function addDefaultPorts(node) {
     return;
   }
 
-  if (node.shape !== "rect" && node.shape !== "circle") return;
+  if (node.shape !== "rect" && node.shape !== "circle" && node.shape !== "plot") return;
 
   for (const side of SIDE_ATTRS) {
     if (node.legs[side]) continue;
@@ -1031,7 +1034,7 @@ function isElementNamed(name) {
 }
 
 function isNodeElement(node, shapes) {
-  return node.type === "element" && (BUILTIN_SHAPE_TAGS.has(node.name) || shapes.has(node.name));
+  return node.type === "element" && (BUILTIN_SHAPE_TAGS.has(node.name) || shapes.has(node.name) || isPlotElement(node));
 }
 
 function isEdgeElement(node) {
@@ -1046,6 +1049,10 @@ function isPortElement(node) {
   return node.type === "element" && PORT_TAGS.has(node.name);
 }
 
+function isPlotElement(node) {
+  return node.type === "element" && PLOT_TAGS.has(node.name);
+}
+
 function isStyleElement(node) {
   return node.type === "element" && STYLE_TAGS.has(node.name);
 }
@@ -1055,6 +1062,20 @@ function isRepeatElement(node) {
 }
 
 function normalizeNodeElement(nodeElement, shapes, styles) {
+  if (isPlotElement(nodeElement)) {
+    const attrs = resolveStyledAttrs({ ...nodeElement.attrs, shape: "plot" }, styles);
+    normalizeBoxAttrs(attrs);
+    return {
+      shape: "plot",
+      attrs,
+      plot: buildPlotModel({
+        ...nodeElement,
+        attrs,
+        children: nodeElement.children.filter((child) => !isPortElement(child))
+      })
+    };
+  }
+
   const shape = BUILTIN_SHAPE_TAGS.get(nodeElement.name) ?? nodeElement.name;
   if (!BUILTIN_SHAPE_TAGS.has(nodeElement.name) && !shapes.has(nodeElement.name)) {
     throw new GraphDslError(`Unknown shape tag <${nodeElement.name}>`);
@@ -1062,6 +1083,12 @@ function normalizeNodeElement(nodeElement, shapes, styles) {
 
   const defaults = shapes.get(nodeElement.name)?.attrs ?? {};
   const attrs = resolveStyledAttrs({ ...defaults, ...nodeElement.attrs, shape }, styles);
+  normalizeBoxAttrs(attrs);
+
+  return { shape, attrs };
+}
+
+function normalizeBoxAttrs(attrs) {
   if (Array.isArray(attrs.at)) {
     attrs.x = attrs.at[0] ?? 0;
     attrs.y = attrs.at[1] ?? 0;
@@ -1070,8 +1097,8 @@ function normalizeNodeElement(nodeElement, shapes, styles) {
     attrs.w = attrs.size[0] ?? attrs.w;
     attrs.h = attrs.size[1] ?? attrs.h;
   }
-
-  return { shape, attrs };
+  if (attrs.width != null) attrs.w = attrs.width;
+  if (attrs.height != null) attrs.h = attrs.height;
 }
 
 function hasExplicitPosition(attrs) {

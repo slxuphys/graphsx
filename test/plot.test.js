@@ -145,6 +145,30 @@ test("generates plot data from math expressions", () => {
   assert.deepEqual(plot.lines[0].points[2], plot.data.sin[2]);
 });
 
+test("generates parametric plot data from x and y expressions", () => {
+  const plot = parsePlot(`
+    <Plot>
+      <Data id="circle" x="cos(t)" y="sin(t)" domain={[0, pi]} samples={3} />
+      <Data id="shifted" variable="u" x="a*cos(u)" y="a*sin(u)" domain={[0, pi/2]} samples={2} params={{ a: 2 }} />
+      <Line data="circle" />
+      <Line data="shifted" />
+    </Plot>
+  `);
+
+  assert.equal(plot.data.circle.length, 3);
+  assert.deepEqual(plot.data.circle.map((point) => ({
+    x: Math.round(point.x * 1000) / 1000,
+    y: Math.round(point.y * 1000) / 1000
+  })), [
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: -1, y: 0 }
+  ]);
+  assert.equal(Math.round(plot.data.shifted[1].x * 1000) / 1000, 0);
+  assert.equal(Math.round(plot.data.shifted[1].y * 1000) / 1000, 2);
+  assert.deepEqual(plot.lines[0].points[1], plot.data.circle[1]);
+});
+
 test("supports animated plot data through declared params", () => {
   const plot = parsePlot(`
     <Plot width={200} height={120} padding={10} xDomain={[0, 1]} yDomain={[-1, 1]}>
@@ -171,6 +195,31 @@ test("supports animated plot data through declared params", () => {
   assert.equal(Math.round(plot.lines[0].attrs.animate.t[1] * 1000) / 1000, 3.142);
   assert.match(path.attrs.d, /L|M/);
   assert.match(path.attrs.d, /110/);
+});
+
+test("supports animated parametric plot data through declared params", () => {
+  const plot = parsePlot(`
+    <Plot width={200} height={120} padding={10} xDomain={[-2, 2]} yDomain={[-2, 2]}>
+      <Data id="circle" x="r*cos(t)" y="r*sin(t)" domain={[0, pi]} samples={3} params={{ r: 1 }} />
+      <Line data="circle" animate={{ r: [1, 2], duration: 2, loop: false }} />
+    </Plot>
+  `);
+  const calls = [];
+  const documentRef = {
+    createElementNS(_namespace, tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    }
+  };
+  const svg = createMockNode("svg");
+  svg.ownerDocument = documentRef;
+
+  renderPlot(svg, plot, { document: documentRef, frame: { time: 2 } });
+
+  const path = calls.find((node) => node.tag === "path" && node.attrs.class === "plot-line");
+  assert.equal(plot.data.circle[0].x, 1);
+  assert.match(path.attrs.d, /190/);
 });
 
 test("rejects invalid generated plot data expressions", () => {
@@ -384,6 +433,35 @@ test("centers axis labels and supports a plot box", () => {
     && node.attrs.y === "130"
     && node.attrs.transform === "rotate(-90 10 130)"
   )));
+});
+
+test("renders an outer plot frame", () => {
+  const plot = parsePlot(`
+    <Plot width={400} height={260} frame frameStyle={{stroke: "#111111", strokeWidth: 2}}>
+      <Line points={[[0, 0], [1, 1]]} />
+    </Plot>
+  `);
+  const calls = [];
+  const documentRef = {
+    createElementNS(_namespace, tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    }
+  };
+  const svg = createMockNode("svg");
+  svg.ownerDocument = documentRef;
+
+  renderPlot(svg, plot, { document: documentRef });
+
+  const frame = calls.find((node) => node.tag === "rect" && node.attrs.class === "plot-frame");
+  assert.ok(frame);
+  assert.equal(frame.attrs.x, "0");
+  assert.equal(frame.attrs.y, "0");
+  assert.equal(frame.attrs.width, "400");
+  assert.equal(frame.attrs.height, "260");
+  assert.equal(frame.attrs.stroke, "#111111");
+  assert.equal(frame.attrs["stroke-width"], "2");
 });
 
 test("supports axis label gaps", () => {
