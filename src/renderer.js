@@ -163,6 +163,9 @@ function drawShape(context, node, offsetX, offsetY) {
       cx: node.transform ? node.x : node.x + offsetX,
       cy: node.transform ? node.y : node.y + offsetY,
       r,
+      fill: "#ffffff",
+      stroke: "#26312d",
+      "stroke-width": 2,
       ...(transform ? { transform } : {})
     });
   }
@@ -174,6 +177,9 @@ function drawShape(context, node, offsetX, offsetY) {
     width: Number(node.attrs.w ?? 100),
     height: Number(node.attrs.h ?? 60),
     rx: Number(node.attrs.corner ?? node.attrs.rx ?? 6),
+    fill: "#ffffff",
+    stroke: "#26312d",
+    "stroke-width": 2,
     ...(transform ? { transform } : {})
   });
 }
@@ -189,7 +195,10 @@ function drawGroupBox(context, node, offsetX, offsetY) {
     y: bounds.minY + offsetY - padding,
     width: Math.max(80, bounds.maxX - bounds.minX + padding * 2),
     height: Math.max(54, bounds.maxY - bounds.minY + padding * 2),
-    rx: 8
+    rx: 8,
+    fill: "rgba(45, 108, 223, 0.05)",
+    stroke: "rgba(45, 108, 223, 0.45)",
+    "stroke-dasharray": "6 5"
   }));
   appendMaybe(box, drawNodeLabel(context, node, offsetX, offsetY, {
     x: node.x,
@@ -217,7 +226,10 @@ function drawLeg(context, leg, offsetX, offsetY) {
     class: "leg-dot",
     cx: leg.x + offsetX,
     cy: leg.y + offsetY,
-    r: Number(leg.attrs.r ?? 5)
+    r: Number(leg.attrs.r ?? 5),
+    fill: "#16846f",
+    stroke: "#ffffff",
+    "stroke-width": 2
   }));
   if (leg.attrs.label != null) {
     group.append(drawLabel(context, leg.attrs.label, leg.x + offsetX + 10, leg.y + offsetY - 10, "leg-label", "start"));
@@ -228,6 +240,9 @@ function drawLeg(context, leg, offsetX, offsetY) {
 function drawEdge(context, edge, from, to, offsetX, offsetY) {
   return styledEl(context, "path", edge.attrs.style, {
     class: "edge",
+    fill: "none",
+    stroke: "#2d6cdf",
+    "stroke-width": 2.5,
     ...arrowMarkerAttrs(context, edge.attrs),
     d: edgePathData(edge, from, to, offsetX, offsetY, context)
   });
@@ -238,7 +253,7 @@ function drawPath(context, path, offsetX, offsetY) {
     class: "path",
     fill: "none",
     stroke: "#111111",
-    strokeWidth: 2,
+    "stroke-width": 2,
     ...arrowMarkerAttrs(context, path.attrs),
     d: explicitPathData(path, offsetX, offsetY)
   };

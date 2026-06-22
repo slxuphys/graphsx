@@ -1,0 +1,36 @@
+{
+  "name": "vscode-graphsx",
+  "displayName": "GraphSX",
+  "description": "Render GraphSX fenced code blocks in VS Code's built-in Markdown preview.",
+  "version": "0.1.0",
+  "publisher": "slxu",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
+  "contributes": {
+    "markdown.markdownItPlugins": true,
+    "markdown.previewScripts": [
+      "./dist/preview.js"
+    ],
+    "markdown.previewStyles": [
+      "./dist/preview.css"
+    ]
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-vscode-extension.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ]
+}

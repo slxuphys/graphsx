@@ -748,6 +748,58 @@ test("renders opt-in arrow markers for links and paths", () => {
   assert.ok(calls.some((node) => node.tag === "marker" && node.attrs.id === "graphsx-arrow-head-8" && node.attrs.markerWidth === 8));
 });
 
+test("renders explicit default graph primitive styles", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[0, 0]} size={[80, 40]}>
+        <Port id="out" right />
+      </Rect>
+      <Circle id="B" at={[160, 20]} r={24} />
+      <Link from="A.out" to="B.left" />
+      <Path id="p" points={[[0, 80], [160, 80]]} />
+    </Graph>
+  `);
+  const calls = [];
+  const documentRef = {
+    createElementNS(_namespace, tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    },
+    createElement(tag) {
+      const node = createMockNode(tag);
+      calls.push(node);
+      return node;
+    }
+  };
+  const svg = createMockNode("svg");
+  svg.ownerDocument = documentRef;
+
+  renderGraph(svg, graph, { document: documentRef });
+
+  const rect = calls.find((node) => node.tag === "rect" && node.attrs.class === "shape");
+  const circle = calls.find((node) => node.tag === "circle" && node.attrs.class === "shape");
+  const port = calls.find((node) => node.tag === "circle" && node.attrs.class === "leg-dot");
+  const edge = calls.find((node) => node.tag === "path" && node.attrs.class === "edge");
+  const path = calls.find((node) => node.tag === "path" && node.attrs.class === "path");
+
+  assert.equal(rect.attrs.fill, "#ffffff");
+  assert.equal(rect.attrs.stroke, "#26312d");
+  assert.equal(rect.attrs["stroke-width"], 2);
+  assert.equal(circle.attrs.fill, "#ffffff");
+  assert.equal(circle.attrs.stroke, "#26312d");
+  assert.equal(circle.attrs["stroke-width"], 2);
+  assert.equal(port.attrs.fill, "#16846f");
+  assert.equal(port.attrs.stroke, "#ffffff");
+  assert.equal(port.attrs["stroke-width"], 2);
+  assert.equal(edge.attrs.fill, "none");
+  assert.equal(edge.attrs.stroke, "#2d6cdf");
+  assert.equal(edge.attrs["stroke-width"], 2.5);
+  assert.equal(path.attrs.fill, "none");
+  assert.equal(path.attrs.stroke, "#111111");
+  assert.equal(path.attrs["stroke-width"], 2);
+});
+
 test("parses explicit paths with points", () => {
   const graph = parseGraph(`
     <Graph>

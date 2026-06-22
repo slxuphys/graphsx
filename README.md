@@ -571,6 +571,16 @@ new EditorView({
 
 When the cursor is outside a `graphsx` fence, the fence renders as an SVG widget. Clicking the widget moves the cursor into the original fenced code. `graphsx-defs` fences render as compact library markers and feed reusable shapes/styles to later fences.
 
+## VS Code Markdown Preview
+
+This repo also contains a VS Code extension scaffold in `packages/vscode-graphsx`. It teaches VS Code's built-in Markdown preview to render `graphsx` fenced blocks.
+
+Build the extension bundle from the repo root:
+
+```bash
+npm run build:vscode
+```
+
 ## Development
 
 ```bash
