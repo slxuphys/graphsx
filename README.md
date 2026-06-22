@@ -48,7 +48,7 @@ npm install codemirror @codemirror/state @codemirror/view @codemirror/lang-javas
 </Graph>
 ```
 
-![GraphSX port diagram rendered as SVG](docs/assets/basic-graph.svg)
+![GraphSX port diagram rendered as SVG](https://raw.githubusercontent.com/slxuphys/graphsx/main/docs/assets/basic-graph.svg)
 
 ### Parametric Plot
 
@@ -68,7 +68,7 @@ npm install codemirror @codemirror/state @codemirror/view @codemirror/lang-javas
 </Plot>
 ```
 
-![GraphSX parametric heart curve rendered as SVG](docs/assets/plot-heart.svg)
+![GraphSX parametric heart curve rendered as SVG](https://raw.githubusercontent.com/slxuphys/graphsx/main/docs/assets/plot-heart.svg)
 
 ### Reusable Shapes And Repeat
 
@@ -91,7 +91,7 @@ npm install codemirror @codemirror/state @codemirror/view @codemirror/lang-javas
 </Graph>
 ```
 
-![GraphSX repeated tensor network rendered as SVG](docs/assets/tensor-repeat.svg)
+![GraphSX repeated tensor network rendered as SVG](https://raw.githubusercontent.com/slxuphys/graphsx/main/docs/assets/tensor-repeat.svg)
 
 ## Quick Example
 
