@@ -1,0 +1,9 @@
+{
+  "scopeName": "source.graphsx",
+  "name": "GraphSX",
+  "patterns": [
+    {
+      "include": "source.js.jsx"
+    }
+  ]
+}

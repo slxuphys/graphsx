@@ -1,0 +1,30 @@
+{
+  "scopeName": "markdown.graphsx.codeblock",
+  "injectionSelector": "L:text.html.markdown",
+  "patterns": [
+    {
+      "name": "markup.fenced_code.block.graphsx.markdown",
+      "begin": "^([ \\t]*)(`{3,}|~{3,})[ \\t]*(graphsx|graphsx-defs)\\b.*$",
+      "beginCaptures": {
+        "2": {
+          "name": "punctuation.definition.markdown"
+        },
+        "3": {
+          "name": "fenced_code.block.language.markdown"
+        }
+      },
+      "end": "^\\1\\2[ \\t]*$",
+      "endCaptures": {
+        "2": {
+          "name": "punctuation.definition.markdown"
+        }
+      },
+      "contentName": "meta.embedded.block.graphsx",
+      "patterns": [
+        {
+          "include": "source.graphsx"
+        }
+      ]
+    }
+  ]
+}

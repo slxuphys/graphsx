@@ -14,9 +14,36 @@
   ],
   "main": "./dist/extension.cjs",
   "activationEvents": [
-    "onLanguage:markdown"
+    "onLanguage:markdown",
+    "onNotebook:jupyter-notebook"
   ],
   "contributes": {
+    "languages": [
+      {
+        "id": "graphsx",
+        "aliases": [
+          "GraphSX",
+          "graphsx"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "graphsx",
+        "scopeName": "source.graphsx",
+        "path": "./syntaxes/graphsx.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.graphsx.codeblock",
+        "path": "./syntaxes/graphsx-markdown.tmLanguage.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.graphsx": "graphsx"
+        }
+      }
+    ],
     "markdown.markdownItPlugins": true,
     "markdown.previewScripts": [
       "./dist/preview.js"
@@ -30,6 +57,7 @@
   },
   "files": [
     "dist",
+    "syntaxes",
     "README.md",
     "package.json"
   ]
