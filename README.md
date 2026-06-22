@@ -17,50 +17,68 @@ Current npm package name: `graphsx`. Project and repo name: GraphSX.
 
 ## What It Looks Like
 
-| Code | Rendered SVG |
-| --- | --- |
-| <pre><code class="language-jsx">&lt;Graph&gt;
-  &lt;Style id="box" fill="#eef6ff" stroke="#1d4ed8" /&gt;
-  &lt;Style id="wire" stroke="#7c3aed" strokeWidth={3} /&gt;
+### Port Diagram
 
-  &lt;Rect id="A" at={[70, 82]} size={[100, 60]} label="alpha" useStyle="box"&gt;
-    &lt;Port id="out" right label="xy" /&gt;
-  &lt;/Rect&gt;
-  &lt;Circle id="B" at={[280, 112]} r={40} label="B"&gt;
-    &lt;Port id="in" left /&gt;
-  &lt;/Circle&gt;
+```jsx
+<Graph>
+  <Style id="box" fill="#eef6ff" stroke="#1d4ed8" />
+  <Style id="wire" stroke="#7c3aed" strokeWidth={3} />
 
-  &lt;Link headArrow from="A.out" to="B.in" useStyle="wire" /&gt;
-&lt;/Graph&gt;</code></pre> | ![GraphSX port diagram rendered as SVG](docs/assets/basic-graph.svg) |
-| <pre><code class="language-jsx">&lt;Plot width={430} height={330} xDomain={[-18, 18]} yDomain={[-18, 14]} frame box&gt;
-  &lt;Data
+  <Rect id="A" at={[70, 82]} size={[100, 60]} label="alpha" useStyle="box">
+    <Port id="out" right label="xy" />
+  </Rect>
+  <Circle id="B" at={[280, 112]} r={40} label="B">
+    <Port id="in" left />
+  </Circle>
+
+  <Link headArrow from="A.out" to="B.in" useStyle="wire" />
+</Graph>
+```
+
+![GraphSX port diagram rendered as SVG](docs/assets/basic-graph.svg)
+
+### Parametric Plot
+
+```jsx
+<Plot width={430} height={330} xDomain={[-18, 18]} yDomain={[-18, 14]} frame box>
+  <Data
     id="heart"
     x="16 * pow(sin(t), 3)"
     y="13*cos(t) - 5*cos(2*t) - 2*cos(3*t) - cos(4*t)"
     domain={[0, 2*pi]}
     samples={360}
-  /&gt;
+  />
 
-  &lt;Axis x label="x" ticks grid /&gt;
-  &lt;Axis y label="y" ticks grid /&gt;
-  &lt;Line data="heart" stroke="#e11d48" strokeWidth={2.6} /&gt;
-&lt;/Plot&gt;</code></pre> | ![GraphSX parametric heart curve rendered as SVG](docs/assets/plot-heart.svg) |
-| <pre><code class="language-jsx">&lt;Graph route="straight"&gt;
-  &lt;Shape id="Tensor" groupBox={false}&gt;
-    &lt;Rect id="box" size={[54, 54]} corner={8} label={label}&gt;
-      &lt;Port id="left" left r={0} /&gt;
-      &lt;Port id="right" right r={0} /&gt;
-      &lt;Port id="phys" bottom r={0} /&gt;
-    &lt;/Rect&gt;
-    &lt;Port id="left" target="box.left" /&gt;
-    &lt;Port id="right" target="box.right" /&gt;
-    &lt;Port id="phys" target="box.phys" /&gt;
-  &lt;/Shape&gt;
+  <Axis x label="x" ticks grid />
+  <Axis y label="y" ticks grid />
+  <Line data="heart" stroke="#e11d48" strokeWidth={2.6} />
+</Plot>
+```
 
-  &lt;Repeat count={4} as="i" step={[96, 0]}&gt;
-    &lt;Tensor id={`A${i}`} at={[70, 60]} label={`A${i}`} /&gt;
-  &lt;/Repeat&gt;
-&lt;/Graph&gt;</code></pre> | ![GraphSX repeated tensor network rendered as SVG](docs/assets/tensor-repeat.svg) |
+![GraphSX parametric heart curve rendered as SVG](docs/assets/plot-heart.svg)
+
+### Reusable Shapes And Repeat
+
+```jsx
+<Graph route="straight">
+  <Shape id="Tensor" groupBox={false}>
+    <Rect id="box" size={[54, 54]} corner={8} label={tensorLabel}>
+      <Port id="left" left r={0} />
+      <Port id="right" right r={0} />
+      <Port id="phys" bottom r={0} />
+    </Rect>
+    <Port id="left" target="box.left" />
+    <Port id="right" target="box.right" />
+    <Port id="phys" target="box.phys" />
+  </Shape>
+
+  <Repeat count={4} as="i" step={[96, 0]}>
+    <Tensor id={`A${i}`} at={[70, 60]} tensorLabel={`A${i}`} />
+  </Repeat>
+</Graph>
+```
+
+![GraphSX repeated tensor network rendered as SVG](docs/assets/tensor-repeat.svg)
 
 ## Quick Example
 
@@ -344,8 +362,10 @@ In a plot:
 - `padding` controls the gap between frame and axes
 - `xDomain` and `yDomain` set data coordinates
 - `Data` can hold points, x/y arrays, or generated math data
-- parametric data uses `x="..."` and `y="..."`; the default variable is `t`
+- generated `Data` always stores point fields named `x` and `y`
+- parametric data uses `x="..."` and `y="..."`; the default sampling variable is `t`
 - `Line`, `Curve`, `Mark`, `Scatter`, `Text`, `Legend`, and annotation shapes render on top
+- generated data expressions may be complex; plotted coordinates use the real part by default
 
 Parametric curves sample a variable and evaluate both coordinates:
 
@@ -362,7 +382,39 @@ Parametric curves sample a variable and evaluate both coordinates:
 </Plot>
 ```
 
-For `y="..."` alone, the default variable is `x`. For `x="..."` plus `y="..."`, the default variable is `t`. Use `variable="theta"` to override either default.
+For `y="..."` alone, the default sampling variable is `x`, and the sampled domain value is stored as the point's `x` field. For `x="..."` plus `y="..."`, the default sampling variable is `t`; both expressions are evaluated from that variable and stored as point fields named `x` and `y`. Use `variable="theta"` to override either default.
+
+```jsx
+<Data id="phase" y="exp(1j*t)" variable="t" domain={[0, 2*pi]} />
+```
+
+This stores points like `{ x: t, y: exp(1j*t) }`.
+
+Complex math uses Python-style imaginary literals such as `1j`, `2.5j`, and `x + 3j`. Bare `j` is just a normal variable name, so `exp(j*x)` only works if `j` is declared in `params`.
+
+```jsx
+<Plot width={560} height={340} xDomain={[-1, 1]} yDomain={[-1.1, 1.1]} frame box>
+  <Data id="root" y="sqrt(x)" domain={[-1, 1]} samples={200} />
+
+  <Axis x label="$x$" ticks grid />
+  <Axis y label="$\sqrt{x}$" ticks grid />
+
+  <Line data="root" label="real" />
+  <Line data="root" yMap="imag(y)" stroke="#dc2626" label="imag" />
+  <Line data="root" yMap="abs(y)" stroke="#16a34a" label="abs" />
+  <Legend />
+</Plot>
+```
+
+Use `xMap` and `yMap` to transform stored points at plot time. The map scope contains the stored `x` and `y` values, which may be real or complex. Either map can use either stored field:
+
+```jsx
+<Plot width={420} height={420} xDomain={[-1.2, 1.2]} yDomain={[-1.2, 1.2]} frame box>
+  <Data id="phase" y="exp(1j*t)" variable="t" domain={[0, 2*pi]} samples={240} />
+
+  <Line data="phase" xMap="real(y)" yMap="imag(y)" label="unit circle" />
+</Plot>
+```
 
 Plot annotations can use `Rect`, `Circle`, `Anchor`, `Link`, and `Path`:
 
@@ -407,10 +459,10 @@ Plot tags:
 | Tag | Children | Key props |
 | --- | --- | --- |
 | `Data` | none | `id`, `points`, `x`, `y`, `domain`, `samples`, `params`, `variable` |
-| `Axis` | `Ticks` | `x`, `y`, `label`, `ticks`, `grid`, `labelGap`, `tickGap`, `tickSize`, `style`, `labelStyle` |
-| `Ticks` | none | `values`, `labels`, `grid`, `labelGap`, `tickSize`, `style`, `labelStyle` |
-| `Line`, `Curve` | none | `data`, `points`, `x`, `y`, `fmt`, `label`, `animate`, `stroke`, `strokeWidth`, `fill`, `r`, `style`, `useStyle` |
-| `Mark`, `Scatter` | none | `data`, `at`, `points`, `x`, `y`, `r`, `label`, `animate`, `fill`, `stroke`, `style`, `useStyle` |
+| `Axis` | `Ticks` | `x`, `y`, `label`, `ticks`, `grid`, `labelGap`, `tickLabelGap`, `tickSize`, `style`, `labelStyle` |
+| `Ticks` | none | `values`, `labels`, `grid`, `labelGap`, `tickLabelGap`, `tickSize`, `style`, `labelStyle` |
+| `Line`, `Curve` | none | `data`, `points`, `x`, `y`, `xMap`, `yMap`, `fmt`, `label`, `animate`, `stroke`, `strokeWidth`, `fill`, `r`, `style`, `useStyle` |
+| `Mark`, `Scatter` | none | `data`, `at`, `points`, `x`, `y`, `xMap`, `yMap`, `r`, `label`, `animate`, `fill`, `stroke`, `style`, `useStyle` |
 | `Text`, `Label` | none | `at`, `label`, `fontSize`, `anchor`, `baseline`, `rotate`, `style`, `useStyle` |
 | `Legend` | none | `position`, `box`, `padding`, `margin`, `fontSize`, `textStyle`, `boxStyle` |
 

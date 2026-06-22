@@ -1,6 +1,13 @@
 import { GraphDslError } from "./errors.js";
-import { EXPRESSION_LITERAL, REF_LITERAL, isExpressionLiteral, isRefLiteral } from "./literals.js";
 import { parseMarkup } from "./markup.js";
+import {
+  applyPointMaps,
+  assertFiniteMathValue,
+  evaluateMathExpression,
+  isMathSource,
+  mathValue,
+  realNumberValue
+} from "./plot-math.js";
 
 const STYLE_TAGS = new Set(["Style"]);
 const DATA_TAGS = new Set(["Data", "Dataset"]);
@@ -37,6 +44,7 @@ const STYLE_ATTRS = new Set([
   "fontStyle",
   "fontWeight"
 ]);
+const numberValue = realNumberValue;
 
 export function parsePlots(source) {
   const roots = parseMarkup(source).filter((node) => node.type === "element");
@@ -410,18 +418,18 @@ function resolvePoints(element, data = new Map()) {
     if (!record) {
       throw new GraphDslError(`Unknown data "${element.attrs.data}"`);
     }
-    return clonePoints(record.points);
+    return applyPointMaps(clonePoints(record.points), element.attrs, `<${element.name}>`);
   }
 
   if (Array.isArray(element.attrs.points)) {
-    return element.attrs.points.map((point) => normalizePoint(point, "points"));
+    return applyPointMaps(element.attrs.points.map((point) => normalizePoint(point, "points")), element.attrs, `<${element.name}>`);
   }
 
   if (Array.isArray(element.attrs.x) && Array.isArray(element.attrs.y)) {
     if (element.attrs.x.length !== element.attrs.y.length) {
       throw new GraphDslError(`<${element.name}> x and y arrays must have the same length`);
     }
-    return element.attrs.x.map((x, index) => normalizePoint([x, element.attrs.y[index]], "x/y"));
+    return applyPointMaps(element.attrs.x.map((x, index) => normalizePoint([x, element.attrs.y[index]], "x/y")), element.attrs, `<${element.name}>`);
   }
 
   if (Array.isArray(element.attrs.x) && isMathSource(element.attrs.y)) {
@@ -450,11 +458,10 @@ function normalizePoint(point, propName) {
   if (!Array.isArray(point) || point.length < 2) {
     throw new GraphDslError(`Plot ${propName} values must be [x, y] pairs`);
   }
-  const x = numberValue(point[0], `${propName} x`);
-  const y = numberValue(point[1], `${propName} y`);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    throw new GraphDslError(`Plot ${propName} values must be finite numbers`);
-  }
+  const x = mathValue(point[0], `${propName} x`);
+  const y = mathValue(point[1], `${propName} y`);
+  assertFiniteMathValue(x, `${propName} x`);
+  assertFiniteMathValue(y, `${propName} y`);
   return { x, y };
 }
 
@@ -464,7 +471,7 @@ function generatePointsFromX(element) {
   const params = paramsScope(element);
 
   return element.attrs.x.map((rawX) => {
-    const x = numberValue(rawX, `${element.name} x`);
+    const x = mathValue(rawX, `${element.name} x`);
     return {
       x,
       y: evaluateMathExpression(expression, new Map([...params, [variable, x]]), `<${element.name}> y`)
@@ -525,7 +532,7 @@ export function regeneratePlotData(source, overrides = {}) {
     if (!params.has(key)) {
       throw new GraphDslError(`Animation variable "${key}" is not declared in <Data id="${source.id}"> params`);
     }
-    params.set(key, numberValue(value, `animation param "${key}"`));
+    params.set(key, realNumberValue(value, `animation param "${key}"`));
   }
 
   if (source.kind === "parametric") {
@@ -543,7 +550,7 @@ export function regeneratePlotData(source, overrides = {}) {
 
   if (Array.isArray(source.x)) {
     return source.x.map((rawX) => {
-      const x = numberValue(rawX, `${source.id} x`);
+      const x = mathValue(rawX, `${source.id} x`);
       return {
         x,
         y: evaluateMathExpression(source.expression, new Map([...params, [source.variable, x]]), `<Data id="${source.id}"> y`)
@@ -574,7 +581,7 @@ function paramsScope(element) {
     throw new GraphDslError(`<${element.name}> params must be an object`);
   }
   for (const [key, value] of Object.entries(source)) {
-    params.set(key, numberValue(value, `param "${key}"`));
+    params.set(key, mathValue(value, `param "${key}"`));
   }
   return params;
 }
@@ -583,218 +590,12 @@ function numericPair(value, propName) {
   if (!Array.isArray(value) || value.length < 2) {
     throw new GraphDslError(`${propName} must be [min, max]`);
   }
-  const min = numberValue(value[0], `${propName} min`);
-  const max = numberValue(value[1], `${propName} max`);
+  const min = realNumberValue(value[0], `${propName} min`);
+  const max = realNumberValue(value[1], `${propName} max`);
   if (!Number.isFinite(min) || !Number.isFinite(max)) {
     throw new GraphDslError(`${propName} values must be finite numbers`);
   }
   return [min, max];
-}
-
-function numberValue(value, label) {
-  if (isExpressionLiteral(value)) {
-    return evaluateMathExpression(value[EXPRESSION_LITERAL], new Map(), label);
-  }
-  if (isRefLiteral(value) && MATH_CONSTANTS.has(value[REF_LITERAL])) {
-    return MATH_CONSTANTS.get(value[REF_LITERAL]);
-  }
-  const number = Number(value);
-  if (!Number.isFinite(number)) {
-    throw new GraphDslError(`${label} must be a finite number`);
-  }
-  return number;
-}
-
-function isMathSource(value) {
-  return typeof value === "string" && value.trim() !== "";
-}
-
-function evaluateMathExpression(source, scope, label) {
-  const parser = new PlotMathParser(source, scope, label);
-  return parser.parse();
-}
-
-const MATH_CONSTANTS = new Map([
-  ["pi", Math.PI],
-  ["PI", Math.PI],
-  ["e", Math.E],
-  ["E", Math.E]
-]);
-
-const MATH_FUNCTIONS = new Map([
-  ["abs", Math.abs],
-  ["acos", Math.acos],
-  ["asin", Math.asin],
-  ["atan", Math.atan],
-  ["atan2", Math.atan2],
-  ["ceil", Math.ceil],
-  ["cos", Math.cos],
-  ["exp", Math.exp],
-  ["floor", Math.floor],
-  ["log", Math.log],
-  ["log10", Math.log10],
-  ["max", Math.max],
-  ["min", Math.min],
-  ["pow", Math.pow],
-  ["round", Math.round],
-  ["sin", Math.sin],
-  ["sqrt", Math.sqrt],
-  ["tan", Math.tan]
-]);
-
-class PlotMathParser {
-  constructor(source, scope, label) {
-    this.source = String(source);
-    this.scope = scope;
-    this.label = label;
-    this.index = 0;
-  }
-
-  parse() {
-    const value = this.parseExpression();
-    this.skipWhitespace();
-    if (!this.isDone()) {
-      throw new GraphDslError(`Unsupported expression "${this.source}" in ${this.label}`);
-    }
-    if (!Number.isFinite(value)) {
-      throw new GraphDslError(`Expression "${this.source}" in ${this.label} did not evaluate to a finite number`);
-    }
-    return value;
-  }
-
-  parseExpression() {
-    let value = this.parseTerm();
-    while (true) {
-      this.skipWhitespace();
-      if (this.consume("+")) {
-        value += this.parseTerm();
-      } else if (this.consume("-")) {
-        value -= this.parseTerm();
-      } else {
-        return value;
-      }
-    }
-  }
-
-  parseTerm() {
-    let value = this.parsePower();
-    while (true) {
-      this.skipWhitespace();
-      if (this.consume("*")) {
-        value *= this.parsePower();
-      } else if (this.consume("/")) {
-        value /= this.parsePower();
-      } else {
-        return value;
-      }
-    }
-  }
-
-  parsePower() {
-    let value = this.parseFactor();
-    this.skipWhitespace();
-    if (this.consume("^")) {
-      value **= this.parsePower();
-    }
-    return value;
-  }
-
-  parseFactor() {
-    this.skipWhitespace();
-    if (this.consume("+")) return this.parseFactor();
-    if (this.consume("-")) return -this.parseFactor();
-    if (this.consume("(")) {
-      const value = this.parseExpression();
-      this.skipWhitespace();
-      if (!this.consume(")")) {
-        throw new GraphDslError(`Unclosed expression "${this.source}" in ${this.label}`);
-      }
-      return value;
-    }
-    if (isDigit(this.peek()) || this.peek() === ".") {
-      return this.parseNumber();
-    }
-    if (isIdentifierStart(this.peek())) {
-      return this.parseIdentifierOrCall();
-    }
-    throw new GraphDslError(`Unsupported expression "${this.source}" in ${this.label}`);
-  }
-
-  parseNumber() {
-    const start = this.index;
-    while (isDigit(this.peek())) this.index += 1;
-    if (this.peek() === ".") {
-      this.index += 1;
-      while (isDigit(this.peek())) this.index += 1;
-    }
-    if (this.peek() === "e" || this.peek() === "E") {
-      this.index += 1;
-      if (this.peek() === "+" || this.peek() === "-") this.index += 1;
-      while (isDigit(this.peek())) this.index += 1;
-    }
-    const raw = this.source.slice(start, this.index);
-    const value = Number(raw);
-    if (!Number.isFinite(value)) {
-      throw new GraphDslError(`Invalid number "${raw}" in ${this.label}`);
-    }
-    return value;
-  }
-
-  parseIdentifierOrCall() {
-    const name = this.parseIdentifier();
-    this.skipWhitespace();
-    if (this.consume("(")) {
-      const fn = MATH_FUNCTIONS.get(name);
-      if (!fn) {
-        throw new GraphDslError(`Unknown math function "${name}" in ${this.label}`);
-      }
-      const args = this.parseArguments();
-      return fn(...args);
-    }
-    if (this.scope.has(name)) return this.scope.get(name);
-    if (MATH_CONSTANTS.has(name)) return MATH_CONSTANTS.get(name);
-    throw new GraphDslError(`Unknown variable "${name}" in ${this.label}`);
-  }
-
-  parseIdentifier() {
-    const start = this.index;
-    this.index += 1;
-    while (isIdentifierPart(this.peek())) this.index += 1;
-    return this.source.slice(start, this.index);
-  }
-
-  parseArguments() {
-    const args = [];
-    this.skipWhitespace();
-    if (this.consume(")")) return args;
-    while (!this.isDone()) {
-      args.push(this.parseExpression());
-      this.skipWhitespace();
-      if (this.consume(")")) return args;
-      if (!this.consume(",")) {
-        throw new GraphDslError(`Expected "," in function call "${this.source}"`);
-      }
-    }
-    throw new GraphDslError(`Unclosed function call "${this.source}"`);
-  }
-
-  skipWhitespace() {
-    while (/\s/.test(this.peek() ?? "")) this.index += 1;
-  }
-
-  consume(value) {
-    if (!this.source.startsWith(value, this.index)) return false;
-    this.index += value.length;
-    return true;
-  }
-
-  peek() {
-    return this.source[this.index];
-  }
-
-  isDone() {
-    return this.index >= this.source.length;
-  }
 }
 
 function buildStyles(styleElements) {

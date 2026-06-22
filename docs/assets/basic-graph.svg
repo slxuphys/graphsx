@@ -1,4 +1,4 @@
-<svg viewBox="0 0 720 520" xmlns="http://www.w3.org/2000/svg"><style>
+<svg viewBox="62 62 286 116" width="286" height="116" xmlns="http://www.w3.org/2000/svg"><style>
     .shape { fill: #ffffff; stroke: #26312d; stroke-width: 2; }
     .node-label { font: 700 14px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1e2724; pointer-events: none; }
     .leg-label { font: 11px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #52605a; pointer-events: none; }

@@ -869,7 +869,8 @@
               <div><code>&lt;Plot width={560} height={340} frame box&gt;</code></div>
               <div><code>&lt;Axis x label="$x$" ticks grid /&gt;</code></div>
               <div><code>&lt;Data id="sin" y="sin(x)" domain={[0, 2*pi]} /&gt;</code></div>
-              <div><code>&lt;Line data="sin" label="$\\sin(x)$" /&gt;</code></div>
+              <div><code>&lt;Line data="sin" label="$\sin(x)$" /&gt;</code></div>
+              <div><code>&lt;Line data="phase" xMap="real(y)" yMap="imag(y)" /&gt;</code></div>
               <div><code>&lt;Graph&gt;&lt;Plot id="p" at={[0, 0]} ... /&gt;&lt;/Graph&gt;</code></div>
             </div>
           </section>
@@ -884,7 +885,7 @@
           <section class="syntax-section">
             <h2>Labels</h2>
             <div class="syntax-grid">
-              <div><code>label="$\\alpha$"</code></div>
+              <div><code>label="$\alpha$"</code></div>
               <div><code>label="text"</code></div>
             </div>
           </section>
@@ -1099,13 +1100,13 @@
                 </div>
                 <div class="docs-card">
                   <h3>Function Data</h3>
-                  <p>A string <code>y</code> expression generates sampled data over <code>domain</code>. The default variable is <code>x</code>. Constants and math helpers include <code>pi</code>, <code>sin</code>, <code>cos</code>, <code>exp</code>, <code>sqrt</code>, and <code>pow</code>.</p>
+                  <p>A string <code>y</code> expression generates sampled data over <code>domain</code>. The default variable is <code>x</code>, and the sampled domain value is stored as the point's <code>x</code> field. Constants and math helpers include <code>pi</code>, <code>sin</code>, <code>cos</code>, <code>exp</code>, <code>sqrt</code>, and <code>pow</code>.</p>
                   <pre><code>&lt;Data id="sin" y="sin(x)" domain={[0, 2*pi]} samples={160} /&gt;
-&lt;Line data="sin" label="$\\sin(x)$" /&gt;</code></pre>
+&lt;Line data="sin" label="$\sin(x)$" /&gt;</code></pre>
                 </div>
                 <div class="docs-card">
                   <h3>Parametric Data</h3>
-                  <p>When both <code>x</code> and <code>y</code> are expressions, GraphSX samples a parameter. The default variable is <code>t</code>; override it with <code>variable</code>.</p>
+                  <p>When both <code>x</code> and <code>y</code> are expressions, GraphSX samples a parameter and stores the evaluated expressions as fields named <code>x</code> and <code>y</code>. The default variable is <code>t</code>; override it with <code>variable</code>.</p>
                   <pre><code>&lt;Data
   id="heart"
   x="16 * pow(sin(t), 3)"
@@ -1116,13 +1117,22 @@
                 </div>
                 <div class="docs-card">
                   <h3>Parameters</h3>
-                  <p><code>params</code> declares extra symbols used in generated data. This makes expressions explicit and gives animation a known starting value.</p>
+                  <p><code>params</code> declares extra symbols used in generated data. This makes expressions explicit and gives animation a known starting value. Parameter values can also be complex strings such as <code>"1j"</code>.</p>
                   <pre><code>&lt;Data
   id="fit"
   y="a * exp(-b*x)"
   params={{ a: 2.6, b: 0.28 }}
   domain={[0, 10]}
 /&gt;</code></pre>
+                </div>
+                <div class="docs-card">
+                  <h3>Complex Values And Maps</h3>
+                  <p>Generated data may store complex <code>x</code> or <code>y</code> values. Plot coordinates use the real part by default. Use <code>xMap</code> and <code>yMap</code> on a series to project stored point fields into plotted coordinates.</p>
+                  <pre><code>&lt;Data id="phase" y="exp(1j*t)" variable="t" domain={[0, 2*pi]} /&gt;
+&lt;Line data="phase" xMap="real(y)" yMap="imag(y)" /&gt;
+
+&lt;Data id="root" y="sqrt(x)" domain={[-1, 1]} /&gt;
+&lt;Line data="root" yMap="imag(y)" /&gt;</code></pre>
                 </div>
               </div>
             </section>
@@ -1136,8 +1146,7 @@
                   <pre><code>&lt;Data id="wave" y="sin(x - phase)" params={{ phase: 0 }} domain={[0, 2*pi]} /&gt;
 &lt;Line
   data="wave"
-  animate={{ phase: [0, 2*pi] }}
-  duration={2600}
+  animate={{ phase: [0, 2*pi], duration: 2.6 }}
 /&gt;</code></pre>
                 </div>
                 <div class="docs-card">
@@ -1178,16 +1187,16 @@
                   <tr><td><code>Repeat</code></td><td><code>Graph</code>, <code>Shape</code></td><td>Any repeatable graph or shape child</td><td><code>count</code>, <code>as</code>, <code>step</code></td><td>Expands repeated nodes, links, and paths with an index variable.</td></tr>
                   <tr><td><code>Style</code></td><td><code>Graph</code>, <code>Plot</code>, libraries</td><td>None</td><td><code>id</code>, plus SVG style props such as <code>fill</code>, <code>stroke</code>, <code>strokeWidth</code>, <code>opacity</code>, <code>strokeDasharray</code></td><td>Reusable style referenced by <code>useStyle</code>.</td></tr>
                   <tr><td><code>Data</code></td><td><code>Plot</code></td><td>None</td><td><code>id</code>, <code>points</code>, <code>x</code>, <code>y</code>, <code>domain</code>, <code>samples</code>, <code>params</code>, <code>variable</code></td><td>Named data from points, x/y arrays, generated functions, or parametric expressions.</td></tr>
-                  <tr><td><code>Axis</code></td><td><code>Plot</code></td><td><code>Ticks</code></td><td><code>x</code>, <code>y</code>, <code>label</code>, <code>ticks</code>, <code>grid</code>, <code>labelGap</code>, <code>tickGap</code>, <code>tickSize</code>, <code>style</code>, <code>labelStyle</code></td><td>X or Y axis with labels, ticks, and grid.</td></tr>
-                  <tr><td><code>Ticks</code></td><td><code>Axis</code></td><td>None</td><td><code>values</code>, <code>labels</code>, <code>grid</code>, <code>labelGap</code>, <code>tickSize</code>, <code>style</code>, <code>labelStyle</code></td><td>Explicit tick values and optional labels.</td></tr>
-                  <tr><td><code>Line</code>, <code>Curve</code></td><td><code>Plot</code></td><td>None</td><td><code>data</code>, <code>points</code>, <code>x</code>, <code>y</code>, <code>fmt</code>, <code>label</code>, <code>animate</code>, <code>stroke</code>, <code>strokeWidth</code>, <code>fill</code>, <code>r</code>, <code>style</code>, <code>useStyle</code></td><td>Draws data as connected series.</td></tr>
-                  <tr><td><code>Mark</code>, <code>Point</code>, <code>Scatter</code></td><td><code>Plot</code></td><td>None</td><td><code>data</code>, <code>at</code>, <code>points</code>, <code>x</code>, <code>y</code>, <code>r</code>, <code>label</code>, <code>animate</code>, <code>fill</code>, <code>stroke</code>, <code>style</code>, <code>useStyle</code></td><td>Draws data as markers.</td></tr>
+                  <tr><td><code>Axis</code></td><td><code>Plot</code></td><td><code>Ticks</code></td><td><code>x</code>, <code>y</code>, <code>label</code>, <code>ticks</code>, <code>grid</code>, <code>labelGap</code>, <code>tickLabelGap</code>, <code>tickSize</code>, <code>style</code>, <code>labelStyle</code></td><td>X or Y axis with labels, ticks, and grid.</td></tr>
+                  <tr><td><code>Ticks</code></td><td><code>Axis</code></td><td>None</td><td><code>values</code>, <code>labels</code>, <code>grid</code>, <code>labelGap</code>, <code>tickLabelGap</code>, <code>tickSize</code>, <code>style</code>, <code>labelStyle</code></td><td>Explicit tick values and optional labels.</td></tr>
+                  <tr><td><code>Line</code>, <code>Curve</code></td><td><code>Plot</code></td><td>None</td><td><code>data</code>, <code>points</code>, <code>x</code>, <code>y</code>, <code>xMap</code>, <code>yMap</code>, <code>fmt</code>, <code>label</code>, <code>animate</code>, <code>stroke</code>, <code>strokeWidth</code>, <code>fill</code>, <code>r</code>, <code>style</code>, <code>useStyle</code></td><td>Draws data as connected series.</td></tr>
+                  <tr><td><code>Mark</code>, <code>Point</code>, <code>Scatter</code></td><td><code>Plot</code></td><td>None</td><td><code>data</code>, <code>at</code>, <code>points</code>, <code>x</code>, <code>y</code>, <code>xMap</code>, <code>yMap</code>, <code>r</code>, <code>label</code>, <code>animate</code>, <code>fill</code>, <code>stroke</code>, <code>style</code>, <code>useStyle</code></td><td>Draws data as markers.</td></tr>
                   <tr><td><code>Text</code>, <code>Label</code></td><td><code>Plot</code></td><td>None</td><td><code>at</code>, <code>label</code>, <code>fontSize</code>, <code>anchor</code>, <code>baseline</code>, <code>rotate</code>, <code>style</code>, <code>useStyle</code></td><td>Text or KaTeX label at data coordinates.</td></tr>
                   <tr><td><code>Legend</code></td><td><code>Plot</code></td><td>None</td><td><code>position</code>, <code>box</code>, <code>padding</code>, <code>margin</code>, <code>fontSize</code>, <code>textStyle</code>, <code>boxStyle</code></td><td>Legend generated from labeled series.</td></tr>
                 </tbody>
               </table>
               <div class="docs-note">Canonical tags use PascalCase. Accepted aliases include <code>rect</code>/<code>Rec</code>/<code>rec</code> for <code>Rect</code>, <code>circle</code>/<code>Circ</code>/<code>circ</code> for <code>Circle</code>, <code>point</code>, <code>anchor</code>, <code>path</code>, <code>Dataset</code>, <code>XAxis</code>, <code>YAxis</code>, <code>ticks</code>, <code>Series</code>, and <code>legend</code>. New examples should prefer the canonical form.</div>
-              <div class="docs-note">For generated <code>Data</code>, <code>y="..."</code> samples the variable <code>x</code> by default. Parametric data uses both <code>x="..."</code> and <code>y="..."</code>, samples <code>t</code> by default, and can override that with <code>variable="theta"</code>.</div>
+              <div class="docs-note">For generated <code>Data</code>, <code>y="..."</code> samples the variable <code>x</code> by default and stores that sampled value as the point's <code>x</code>. Parametric data uses both <code>x="..."</code> and <code>y="..."</code>, samples <code>t</code> by default, and stores the evaluated expressions as fields named <code>x</code> and <code>y</code>. Complex expressions use numeric imaginary literals such as <code>1j</code>; bare <code>j</code> is a normal parameter name.</div>
             </section>
 
             <section class="docs-section">
@@ -1208,7 +1217,7 @@
                   <h3>Generated Function Data</h3>
                   <pre><code>&lt;Plot width={560} height={340} xDomain={[0, 2*pi]} yDomain={[-1, 1]} box&gt;
   &lt;Data id="sin" y="sin(x)" domain={[0, 2*pi]} samples={160} /&gt;
-  &lt;Line data="sin" label="$\\sin(x)$" /&gt;
+  &lt;Line data="sin" label="$\sin(x)$" /&gt;
 &lt;/Plot&gt;</code></pre>
                 </div>
                 <div class="docs-card">

@@ -1,4 +1,5 @@
 import { regeneratePlotData } from "./plot.js";
+import { applyPointMaps } from "./plot-math.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MATH_LABEL_HEIGHT = 34;
@@ -435,7 +436,7 @@ function drawSeries(context, series, options) {
 
   if (markerVisible) {
     for (const point of points) {
-      group.append(drawMarker(context, point, series.attrs, `${options.className}-marker`));
+      appendMaybe(group, drawMarker(context, point, series.attrs, `${options.className}-marker`));
     }
   }
 
@@ -447,7 +448,7 @@ function seriesPoints(context, series) {
   if (!animate || !series.dataId) return series.points;
   const source = context.plot.dataSources?.[series.dataId];
   if (!source?.generated) return series.points;
-  return regeneratePlotData(source, animatedParamValues(animate, context.frame));
+  return applyPointMaps(regeneratePlotData(source, animatedParamValues(animate, context.frame)), series.attrs, "animated series");
 }
 
 function animatedParamValues(animate, frame = {}) {
@@ -474,6 +475,7 @@ function animatedParamValues(animate, frame = {}) {
 }
 
 function drawMarker(context, point, attrs, className) {
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
   return styledEl(context, "circle", attrs.style, {
     class: className,
     fill: "#111111",
@@ -842,23 +844,38 @@ function plotBounds(plot) {
   if (points.length === 0) {
     return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
   }
+  const finitePoints = points
+    .map((point) => ({ x: plotNumber(point.x), y: plotNumber(point.y) }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+  if (finitePoints.length === 0) {
+    return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+  }
   return {
-    minX: Math.min(...points.map((point) => point.x)),
-    minY: Math.min(...points.map((point) => point.y)),
-    maxX: Math.max(...points.map((point) => point.x)),
-    maxY: Math.max(...points.map((point) => point.y))
+    minX: Math.min(...finitePoints.map((point) => point.x)),
+    minY: Math.min(...finitePoints.map((point) => point.y)),
+    maxX: Math.max(...finitePoints.map((point) => point.x)),
+    maxY: Math.max(...finitePoints.map((point) => point.y))
   };
 }
 
 function project(context, point) {
   const innerWidth = plotWidth(context);
   const innerHeight = plotHeight(context);
-  const xT = (point.x - context.xDomain[0]) / (context.xDomain[1] - context.xDomain[0]);
-  const yT = (point.y - context.yDomain[0]) / (context.yDomain[1] - context.yDomain[0]);
+  const xValue = plotNumber(point.x);
+  const yValue = plotNumber(point.y);
+  const xT = (xValue - context.xDomain[0]) / (context.xDomain[1] - context.xDomain[0]);
+  const yT = (yValue - context.yDomain[0]) / (context.yDomain[1] - context.yDomain[0]);
   return {
     x: context.padding.left + xT * innerWidth,
     y: context.height - context.padding.bottom - yT * innerHeight
   };
+}
+
+function plotNumber(value) {
+  if (value && typeof value === "object" && Object.hasOwn(value, "re") && Object.hasOwn(value, "im")) {
+    return Number(value.re);
+  }
+  return Number(value);
 }
 
 function plotWidth(context) {
@@ -915,7 +932,17 @@ function normalizePadding(value) {
 }
 
 function pathData(points) {
-  return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  const commands = [];
+  let open = false;
+  for (const point of points) {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
+      open = false;
+      continue;
+    }
+    commands.push(`${open ? "L" : "M"} ${point.x} ${point.y}`);
+    open = true;
+  }
+  return commands.join(" ");
 }
 
 function parseFmt(fmt) {

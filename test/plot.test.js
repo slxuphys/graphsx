@@ -169,6 +169,65 @@ test("generates parametric plot data from x and y expressions", () => {
   assert.deepEqual(plot.lines[0].points[1], plot.data.circle[1]);
 });
 
+test("supports complex generated data and series maps", () => {
+  const plot = parsePlot(`
+    <Plot>
+      <Data id="root" y="sqrt(x)" domain={[-1, 1]} samples={3} />
+      <Data id="wave" y="exp(1j*x)" domain={[0, pi/2]} samples={2} />
+      <Line data="root" label="real" />
+      <Line data="root" yMap="imag(y)" label="imag" />
+      <Line data="root" yMap="y^2" label="square" />
+      <Line data="wave" yMap="imag(y)" label="sin" />
+    </Plot>
+  `);
+
+  assert.deepEqual(plot.data.root[0].y, { re: 0, im: 1 });
+  assert.equal(plot.lines[0].points[0].y.re, 0);
+  assert.equal(plot.lines[1].points[0].y, 1);
+  assert.equal(plot.lines[2].points[0].y, -1);
+  assert.equal(Math.round(plot.lines[3].points[1].y * 1000) / 1000, 1);
+});
+
+test("supports complex x values through xMap", () => {
+  const plot = parsePlot(`
+    <Plot>
+      <Data id="phase" y="exp(1j*t)" variable="t" domain={[0, pi/2]} samples={2} />
+      <Line data="phase" xMap="real(y)" yMap="imag(y)" />
+      <Line data="phase" xMap="y" yMap="imag(y)" />
+    </Plot>
+  `);
+
+  assert.deepEqual(plot.data.phase[1].y, { re: 0, im: 1 });
+  assert.deepEqual(plot.lines[0].points.map((point) => ({
+    x: Math.round(point.x * 1000) / 1000,
+    y: Math.round(point.y * 1000) / 1000
+  })), [
+    { x: 1, y: 0 },
+    { x: 0, y: 1 }
+  ]);
+  assert.deepEqual(plot.lines[1].points[1].x, { re: 0, im: 1 });
+});
+
+test("requires numeric imaginary literals instead of bare j", () => {
+  assert.throws(
+    () => parsePlot(`
+      <Plot>
+        <Data id="bad" y="exp(j*x)" domain={[0, 1]} />
+      </Plot>
+    `),
+    /Unknown variable "j"/
+  );
+
+  const plot = parsePlot(`
+    <Plot>
+      <Data id="ok" y="exp(j*x)" params={{ j: "1j" }} domain={[0, pi/2]} samples={2} />
+      <Line data="ok" yMap="imag(y)" />
+    </Plot>
+  `);
+
+  assert.equal(Math.round(plot.lines[0].points[1].y * 1000) / 1000, 1);
+});
+
 test("supports animated plot data through declared params", () => {
   const plot = parsePlot(`
     <Plot width={200} height={120} padding={10} xDomain={[0, 1]} yDomain={[-1, 1]}>

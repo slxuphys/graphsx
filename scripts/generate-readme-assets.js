@@ -49,7 +49,7 @@ const examples = [
   <Style id="hidden" fill="transparent" stroke="transparent" strokeWidth={0} />
 
   <Shape id="Tensor" groupBox={false}>
-    <Rect id="box" at={[0, 0]} size={[54, 54]} corner={8} useStyle="tensor" label={label}>
+    <Rect id="box" at={[0, 0]} size={[54, 54]} corner={8} useStyle="tensor" label={tensorLabel}>
       <Port id="left" left r={0} useStyle="hidden" />
       <Port id="right" right r={0} useStyle="hidden" />
       <Port id="phys" bottom r={0} useStyle="hidden" />
@@ -60,7 +60,7 @@ const examples = [
   </Shape>
 
   <Repeat count={4} as="i" step={[96, 0]}>
-    <Tensor id={\`A\${i}\`} at={[70, 60]} label={\`A\${i}\`} />
+    <Tensor id={\`A\${i}\`} at={[70, 60]} tensorLabel={\`A\${i}\`} />
     <Point id={\`p\${i}\`} at={[97, 150]} r={0} />
     <Link from={\`A\${i}.phys\`} to={\`p\${i}.center\`} useStyle="wire" />
   </Repeat>
@@ -86,6 +86,7 @@ function renderToSvg(source) {
   const svg = createMockNode("svg");
   svg.ownerDocument = documentRef;
   renderGraphSXDocument(svg, parseGraphSXDocument(source), { document: documentRef });
+  trimSvg(svg);
   svg.attrs.xmlns = "http://www.w3.org/2000/svg";
   svg.children.unshift(createStyleNode());
   return serializeNode(svg);
@@ -144,6 +145,115 @@ function createStyleNode() {
     .plot-axis-label, .plot-tick-label, .plot-label { font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #1e2724; }
   `;
   return style;
+}
+
+function trimSvg(svg, padding = 18) {
+  const bbox = nodeBBox(svg);
+  if (!bbox) return;
+  const x = Math.floor(bbox.minX - padding);
+  const y = Math.floor(bbox.minY - padding);
+  const width = Math.ceil(bbox.maxX - bbox.minX + padding * 2);
+  const height = Math.ceil(bbox.maxY - bbox.minY + padding * 2);
+  svg.attrs.viewBox = `${x} ${y} ${width} ${height}`;
+  svg.attrs.width = width;
+  svg.attrs.height = height;
+}
+
+function nodeBBox(node) {
+  if (["defs", "marker", "style"].includes(node.tag)) return null;
+
+  let bbox = primitiveBBox(node);
+  for (const child of node.children ?? []) {
+    bbox = mergeBBox(bbox, nodeBBox(child));
+  }
+  return bbox;
+}
+
+function primitiveBBox(node) {
+  switch (node.tag) {
+    case "rect":
+      return rectBBox(node);
+    case "circle":
+      return circleBBox(node);
+    case "line":
+      return lineBBox(node);
+    case "path":
+      return pathBBox(node);
+    case "text":
+      return textBBox(node);
+    default:
+      return null;
+  }
+}
+
+function rectBBox(node) {
+  const x = numberAttr(node, "x", 0);
+  const y = numberAttr(node, "y", 0);
+  const width = numberAttr(node, "width", 0);
+  const height = numberAttr(node, "height", 0);
+  if (width <= 0 || height <= 0) return null;
+  return makeBBox(x, y, x + width, y + height);
+}
+
+function circleBBox(node) {
+  const cx = numberAttr(node, "cx", 0);
+  const cy = numberAttr(node, "cy", 0);
+  const r = numberAttr(node, "r", 0);
+  return makeBBox(cx - r, cy - r, cx + r, cy + r);
+}
+
+function lineBBox(node) {
+  return makeBBox(
+    Math.min(numberAttr(node, "x1", 0), numberAttr(node, "x2", 0)),
+    Math.min(numberAttr(node, "y1", 0), numberAttr(node, "y2", 0)),
+    Math.max(numberAttr(node, "x1", 0), numberAttr(node, "x2", 0)),
+    Math.max(numberAttr(node, "y1", 0), numberAttr(node, "y2", 0))
+  );
+}
+
+function pathBBox(node) {
+  const numbers = String(node.attrs.d ?? "").match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi)?.map(Number) ?? [];
+  if (numbers.length < 2) return null;
+  const xs = [];
+  const ys = [];
+  for (let index = 0; index + 1 < numbers.length; index += 2) {
+    xs.push(numbers[index]);
+    ys.push(numbers[index + 1]);
+  }
+  return makeBBox(Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys));
+}
+
+function textBBox(node) {
+  const x = Number(node.attrs.x);
+  const y = Number(node.attrs.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const text = String(node.text ?? "");
+  const width = Math.max(8, text.length * 8);
+  const height = 16;
+  const anchor = node.attrs["text-anchor"];
+  const minX = anchor === "middle" ? x - width / 2 : anchor === "end" ? x - width : x;
+  return makeBBox(minX, y - height, minX + width, y + 4);
+}
+
+function numberAttr(node, name, fallback) {
+  const value = Number(node.attrs[name]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function makeBBox(minX, minY, maxX, maxY) {
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
+  return { minX, minY, maxX, maxY };
+}
+
+function mergeBBox(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  return {
+    minX: Math.min(a.minX, b.minX),
+    minY: Math.min(a.minY, b.minY),
+    maxX: Math.max(a.maxX, b.maxX),
+    maxY: Math.max(a.maxY, b.maxY)
+  };
 }
 
 function serializeNode(node) {

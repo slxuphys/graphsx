@@ -161,6 +161,34 @@ const graphExamples = [
 </Plot>`
   },
   {
+    name: "Complex Y",
+    source: `<Plot width={620} height={380} padding={[54, 64, 70, 74]} xDomain={[-1, 1]} yDomain={[-1.1, 1.1]} frame box>
+  <Data id="root" y="sqrt(x)" domain={[-1, 1]} samples={220} />
+
+  <Axis x label="$x$" ticks grid />
+  <Axis y label="$\\sqrt{x}$" ticks grid />
+
+  <Line data="root" stroke="#2563eb" strokeWidth={2.5} label="real" />
+  <Line data="root" yMap="imag(y)" stroke="#dc2626" strokeWidth={2.5} strokeDasharray="7 5" label="imag" />
+  <Line data="root" yMap="abs(y)" stroke="#16a34a" strokeWidth={2} strokeDasharray="2 4" label="abs" />
+  <Text at={[-0.42, 0.68]} label="$y=\\sqrt{x}$" fontSize={22} />
+  <Legend position="bottom-right" />
+</Plot>`
+  },
+  {
+    name: "Complex X",
+    source: `<Plot width={420} height={420} padding={[42, 48, 58, 64]} xDomain={[-1.2, 1.2]} yDomain={[-1.2, 1.2]} frame box>
+  <Data id="phase" y="exp(1j*t)" variable="t" domain={[0, 2*pi]} samples={50} />
+
+  <Axis x label="$\\operatorname{Re}(e^{it})$" ticks grid />
+  <Axis y label="$\\operatorname{Im}(e^{it})$" ticks grid />
+
+  <Line data="phase" xMap="real(y)" yMap="imag(y)" stroke="#7c3aed" strokeWidth={2.6} label="unit circle" />
+  <Line data="phase" xMap="y" yMap="imag(y)" stroke="#f97316" strokeWidth={1.8} strokeDasharray="6 5" label="real(xMap)" />
+  <Legend position="top-right" />
+</Plot>`
+  },
+  {
     name: "Animated Wave",
     source: `<Plot width={620} height={360} padding={[54, 64, 70, 74]} xDomain={[0, 2*pi]} yDomain={[-1.2, 1.2]} frame box>
   <Data
@@ -181,8 +209,7 @@ const graphExamples = [
     stroke="#2563eb"
     strokeWidth={2.5}
     label="wave"
-    animate={{ phase: [0, 2*pi] }}
-    duration={2600}
+    animate={{ phase: [0, 2*pi], duration: 2.6 }}
   />
   <Text at={[pi, 0.82]} label="$\\phi: 0 \\to 2\\pi$" fontSize={18} />
   <Legend position="top-right" />
@@ -320,6 +347,58 @@ console.log("not GraphSX");
   <Link from="A.right" to="B.left" />
 </Graph>
 \`\`\``
+  },
+  {
+    name: "Plots In Markdown",
+    source: `# Plot Notes
+
+GraphSX plot fences can sit inside Markdown just like graph diagrams. This keeps the note as the source of truth: text, equations, and small generated figures live together.
+
+## Generated function data
+
+\`\`\`graphsx
+<Plot width={560} height={340} xDomain={[0, 2*pi]} yDomain={[-1.2, 1.2]} frame box>
+  <Data id="sin" y="sin(x)" domain={[0, 2*pi]} samples={180} />
+
+  <Axis x label="$x$">
+    <Ticks
+      values={[0, pi/2, pi, 3*pi/2, 2*pi]}
+      labels={["$0$", "$\\pi/2$", "$\\pi$", "$3\\pi/2$", "$2\\pi$"]}
+      grid
+    />
+  </Axis>
+  <Axis y label="$\\sin(x)$" ticks grid />
+
+  <Line data="sin" stroke="#2563eb" strokeWidth={2} label="$\\sin(x)$" />
+  <Legend />
+</Plot>
+\`\`\`
+
+## Complex data projected into a real plot
+
+The data below stores a complex value in the point's \`y\` field. The line uses \`xMap\` and \`yMap\` to plot the real and imaginary parts as a phase circle.
+
+\`\`\`graphsx
+<Plot width={420} height={420} xDomain={[-1.2, 1.2]} yDomain={[-1.2, 1.2]} frame box>
+  <Data id="phase" y="exp(1j*t)" variable="t" domain={[0, 2*pi]} samples={50} />
+
+  <Axis x label="$\\operatorname{Re}$" ticks grid />
+  <Axis y label="$\\operatorname{Im}$" ticks grid />
+
+  <Line
+    data="phase"
+    xMap="real(y)"
+    yMap="imag(y)"
+    stroke="#7c3aed"
+    strokeWidth={2.4}
+    label="$e^{it}$"
+  />
+  <Mark data="phase" xMap="real(y)" yMap="imag(y)" fmt="." r={2.5} fill="#f59e0b" />
+  <Legend />
+</Plot>
+\`\`\`
+
+The same Markdown file can still contain ordinary prose, lists, and non-GraphSX code fences.`
   },
   {
     name: "Library Reuse",
