@@ -13,7 +13,13 @@ It is designed for notes, papers, docs, and small scientific figures where the s
 
 Try the playground: https://slxuphys.github.io/graphsx/
 
-Current npm package name: `graphsx`. Project and repo name: GraphSX.
+Current npm package name: `@slxu/graphsx`. Project and repo name: GraphSX.
+
+Install from npm:
+
+```bash
+npm install @slxu/graphsx
+```
 
 ## What It Looks Like
 
@@ -102,7 +108,7 @@ Current npm package name: `graphsx`. Project and repo name: GraphSX.
 Use it from JavaScript:
 
 ```js
-import { parseGraphSXDocument, renderGraphSXDocument } from "graphsx";
+import { parseGraphSXDocument, renderGraphSXDocument } from "@slxu/graphsx";
 import katex from "katex";
 
 const model = parseGraphSXDocument(source);
@@ -488,8 +494,8 @@ GraphSX works in Markdown with a `markdown-it` plugin:
 ```js
 import MarkdownIt from "markdown-it";
 import katex from "katex";
-import { graphsxMarkdownIt, renderGraphSXBlocks } from "graphsx";
-import "graphsx/markdown.css";
+import { graphsxMarkdownIt, renderGraphSXBlocks } from "@slxu/graphsx";
+import "@slxu/graphsx/markdown.css";
 
 const md = new MarkdownIt().use(graphsxMarkdownIt);
 const preview = document.querySelector("#preview");
@@ -537,8 +543,8 @@ Use the CodeMirror extension to render `graphsx` fences as editable live widgets
 import { EditorView, basicSetup } from "codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import { jsxLanguage } from "@codemirror/lang-javascript";
-import { graphsxCodeMirrorLivePreview } from "graphsx/codemirror";
-import "graphsx/codemirror.css";
+import { graphsxCodeMirrorLivePreview } from "@slxu/graphsx/codemirror";
+import "@slxu/graphsx/codemirror.css";
 
 new EditorView({
   doc,
