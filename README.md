@@ -17,11 +17,9 @@ Current npm package name: `graphsx`. Project and repo name: GraphSX.
 
 ## What It Looks Like
 
-<table>
-<tr>
-<td width="48%">
-
-<pre><code class="language-jsx">&lt;Graph&gt;
+| Code | Rendered SVG |
+| --- | --- |
+| <pre><code class="language-jsx">&lt;Graph&gt;
   &lt;Style id="box" fill="#eef6ff" stroke="#1d4ed8" /&gt;
   &lt;Style id="wire" stroke="#7c3aed" strokeWidth={3} /&gt;
 
@@ -33,19 +31,8 @@ Current npm package name: `graphsx`. Project and repo name: GraphSX.
   &lt;/Circle&gt;
 
   &lt;Link headArrow from="A.out" to="B.in" useStyle="wire" /&gt;
-&lt;/Graph&gt;</code></pre>
-
-</td>
-<td width="52%">
-
-<img src="https://github.com/slxuphys/graphsx/raw/main/docs/assets/basic-graph.svg" alt="GraphSX port diagram rendered as SVG" />
-
-</td>
-</tr>
-<tr>
-<td width="48%">
-
-<pre><code class="language-jsx">&lt;Plot width={430} height={330} xDomain={[-18, 18]} yDomain={[-18, 14]} frame box&gt;
+&lt;/Graph&gt;</code></pre> | ![GraphSX port diagram rendered as SVG](docs/assets/basic-graph.svg) |
+| <pre><code class="language-jsx">&lt;Plot width={430} height={330} xDomain={[-18, 18]} yDomain={[-18, 14]} frame box&gt;
   &lt;Data
     id="heart"
     x="16 * pow(sin(t), 3)"
@@ -57,19 +44,8 @@ Current npm package name: `graphsx`. Project and repo name: GraphSX.
   &lt;Axis x label="x" ticks grid /&gt;
   &lt;Axis y label="y" ticks grid /&gt;
   &lt;Line data="heart" stroke="#e11d48" strokeWidth={2.6} /&gt;
-&lt;/Plot&gt;</code></pre>
-
-</td>
-<td width="52%">
-
-<img src="https://github.com/slxuphys/graphsx/raw/main/docs/assets/plot-heart.svg" alt="GraphSX parametric heart curve rendered as SVG" />
-
-</td>
-</tr>
-<tr>
-<td width="48%">
-
-<pre><code class="language-jsx">&lt;Graph route="straight"&gt;
+&lt;/Plot&gt;</code></pre> | ![GraphSX parametric heart curve rendered as SVG](docs/assets/plot-heart.svg) |
+| <pre><code class="language-jsx">&lt;Graph route="straight"&gt;
   &lt;Shape id="Tensor" groupBox={false}&gt;
     &lt;Rect id="box" size={[54, 54]} corner={8} label={label}&gt;
       &lt;Port id="left" left r={0} /&gt;
@@ -84,16 +60,7 @@ Current npm package name: `graphsx`. Project and repo name: GraphSX.
   &lt;Repeat count={4} as="i" step={[96, 0]}&gt;
     &lt;Tensor id={`A${i}`} at={[70, 60]} label={`A${i}`} /&gt;
   &lt;/Repeat&gt;
-&lt;/Graph&gt;</code></pre>
-
-</td>
-<td width="52%">
-
-<img src="https://github.com/slxuphys/graphsx/raw/main/docs/assets/tensor-repeat.svg" alt="GraphSX repeated tensor network rendered as SVG" />
-
-</td>
-</tr>
-</table>
+&lt;/Graph&gt;</code></pre> | ![GraphSX repeated tensor network rendered as SVG](docs/assets/tensor-repeat.svg) |
 
 ## Quick Example
 
