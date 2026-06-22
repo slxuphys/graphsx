@@ -38,7 +38,7 @@ Current npm package name: `graphsx`. Project and repo name: GraphSX.
 </td>
 <td width="52%">
 
-<img src="docs/assets/basic-graph.svg" alt="GraphSX port diagram rendered as SVG" />
+<img src="https://github.com/slxuphys/graphsx/raw/main/docs/assets/basic-graph.svg" alt="GraphSX port diagram rendered as SVG" />
 
 </td>
 </tr>
@@ -62,7 +62,7 @@ Current npm package name: `graphsx`. Project and repo name: GraphSX.
 </td>
 <td width="52%">
 
-<img src="docs/assets/plot-heart.svg" alt="GraphSX parametric heart curve rendered as SVG" />
+<img src="https://github.com/slxuphys/graphsx/raw/main/docs/assets/plot-heart.svg" alt="GraphSX parametric heart curve rendered as SVG" />
 
 </td>
 </tr>
@@ -89,7 +89,7 @@ Current npm package name: `graphsx`. Project and repo name: GraphSX.
 </td>
 <td width="52%">
 
-<img src="docs/assets/tensor-repeat.svg" alt="GraphSX repeated tensor network rendered as SVG" />
+<img src="https://github.com/slxuphys/graphsx/raw/main/docs/assets/tensor-repeat.svg" alt="GraphSX repeated tensor network rendered as SVG" />
 
 </td>
 </tr>
