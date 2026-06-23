@@ -3,7 +3,7 @@
   "displayName": "GraphSX",
   "description": "Render GraphSX fenced code blocks in VS Code Markdown previews and notebook Markdown cells.",
   "version": "0.1.0",
-  "publisher": "slxu",
+  "publisher": "slxuphys",
   "license": "MIT",
   "icon": "assets/icon.png",
   "repository": {
@@ -11,7 +11,7 @@
     "url": "https://github.com/slxuphys/graphsx.git",
     "directory": "packages/vscode-graphsx"
   },
-  "homepage": "https://github.com/slxuphys/graphsx/tree/main/packages/vscode-graphsx#readme",
+  "homepage": "https://slxuphys.github.io/graphsx/",
   "bugs": {
     "url": "https://github.com/slxuphys/graphsx/issues"
   },
@@ -76,7 +76,7 @@
     ],
     "notebookRenderer": [
       {
-        "id": "slxu.graphsx.markdown-it-renderer",
+        "id": "slxuphys.graphsx.markdown-it-renderer",
         "displayName": "GraphSX Markdown Renderer",
         "entrypoint": {
           "extends": "vscode.markdown-it-renderer",
