@@ -4,8 +4,6 @@ GraphSX is a JSX-like DSL for drawing diagrams, plots, and Markdown-native figur
 
 [Playground](https://slxuphys.github.io/graphsx/) · [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=slxuphys.graphsx-vscode)
 
-[![VS Code Extension](https://img.shields.io/visual-studio-marketplace/v/slxuphys.graphsx-vscode?label=VS%20Code%20Extension)](https://marketplace.visualstudio.com/items?itemName=slxuphys.graphsx-vscode)
-
 It is designed for notes, papers, docs, and small scientific figures where the source should stay readable:
 
 - JSX-like tags and props instead of a separate command language
