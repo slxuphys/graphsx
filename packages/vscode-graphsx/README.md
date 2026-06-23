@@ -80,7 +80,7 @@ Then later Markdown cells can use that library:
 ```
 ````
 
-Same-cell `graphsx-defs` libraries override preamble libraries with the same name. When the preamble parses successfully, the extension stores the library source in GraphSX metadata on Markdown cells that use GraphSX, which nudges VS Code to refresh rendered notebook cells after the setup cell changes.
+Same-cell `graphsx-defs` libraries override preamble libraries with the same name. When the preamble parses successfully, the extension stores the library source in GraphSX metadata on Markdown cells that use GraphSX, which nudges VS Code to refresh rendered notebook cells after the setup cell changes. This metadata sync can mark the notebook as modified, similar to notebook tools that update cell metadata.
 
 If the front matter is malformed, the first Markdown cell renders a visible GraphSX front matter error and the previous valid notebook metadata is left unchanged.
 

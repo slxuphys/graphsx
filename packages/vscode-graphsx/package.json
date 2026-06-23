@@ -6,6 +6,27 @@
   "publisher": "slxu",
   "license": "MIT",
   "icon": "assets/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/slxuphys/graphsx.git",
+    "directory": "packages/vscode-graphsx"
+  },
+  "homepage": "https://github.com/slxuphys/graphsx/tree/main/packages/vscode-graphsx#readme",
+  "bugs": {
+    "url": "https://github.com/slxuphys/graphsx/issues"
+  },
+  "keywords": [
+    "graphsx",
+    "markdown",
+    "notebook",
+    "diagram",
+    "plot",
+    "svg"
+  ],
+  "galleryBanner": {
+    "color": "#eef6ff",
+    "theme": "light"
+  },
   "type": "module",
   "engines": {
     "vscode": "^1.90.0"

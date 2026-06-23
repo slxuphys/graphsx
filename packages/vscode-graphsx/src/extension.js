@@ -3,7 +3,7 @@ import { graphsxMarkdownIt } from "../../../src/markdown.js";
 import { parseGraphSXFrontMatter } from "./frontmatter.js";
 
 const GRAPHSX_NOTEBOOK_LIBRARIES = "graphsxLibraries";
-const GRAPHX_NOTEBOOK_LIBRARY_VERSION = "graphsxLibrariesVersion";
+const GRAPHSX_NOTEBOOK_LIBRARY_VERSION = "graphsxLibrariesVersion";
 const syncTimers = new Map();
 
 export function extendMarkdownIt(md) {
@@ -94,10 +94,10 @@ function nextGraphSXMetadata(metadata, libraries, version) {
   const next = { ...metadata };
   if (Object.keys(libraries).length === 0) {
     delete next[GRAPHSX_NOTEBOOK_LIBRARIES];
-    delete next[GRAPHX_NOTEBOOK_LIBRARY_VERSION];
+    delete next[GRAPHSX_NOTEBOOK_LIBRARY_VERSION];
     return next;
   }
   next[GRAPHSX_NOTEBOOK_LIBRARIES] = libraries;
-  next[GRAPHX_NOTEBOOK_LIBRARY_VERSION] = version;
+  next[GRAPHSX_NOTEBOOK_LIBRARY_VERSION] = version;
   return next;
 }
