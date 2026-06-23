@@ -1,10 +1,12 @@
 {
-  "name": "vscode-graphsx",
+  "name": "graphsx-vscode",
   "displayName": "GraphSX",
-  "description": "Render GraphSX fenced code blocks in VS Code's built-in Markdown preview.",
+  "description": "Render GraphSX fenced code blocks in VS Code Markdown previews and notebook Markdown cells.",
   "version": "0.1.0",
   "publisher": "slxu",
   "license": "MIT",
+  "icon": "assets/icon.png",
+  "type": "module",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -50,12 +52,23 @@
     ],
     "markdown.previewStyles": [
       "./dist/preview.css"
+    ],
+    "notebookRenderer": [
+      {
+        "id": "slxu.graphsx.markdown-it-renderer",
+        "displayName": "GraphSX Markdown Renderer",
+        "entrypoint": {
+          "extends": "vscode.markdown-it-renderer",
+          "path": "./dist/notebook-renderer.js"
+        }
+      }
     ]
   },
   "scripts": {
     "build": "node ../../scripts/build-vscode-extension.js"
   },
   "files": [
+    "assets",
     "dist",
     "syntaxes",
     "README.md",

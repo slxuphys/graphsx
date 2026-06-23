@@ -30,6 +30,15 @@ await Promise.all([
     logLevel: "info"
   }),
   build({
+    entryPoints: [path.join(extensionDir, "src", "notebook-renderer.js")],
+    outfile: path.join(distDir, "notebook-renderer.js"),
+    bundle: true,
+    platform: "browser",
+    format: "esm",
+    target: "es2020",
+    logLevel: "info"
+  }),
+  build({
     entryPoints: [path.join(extensionDir, "src", "preview.css")],
     outfile: path.join(distDir, "preview.css"),
     bundle: true,
@@ -42,4 +51,3 @@ await Promise.all([
     logLevel: "info"
   })
 ]);
-

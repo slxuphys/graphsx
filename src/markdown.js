@@ -35,7 +35,10 @@ export function graphsxMarkdownIt(md, options = {}) {
 }
 
 export function renderGraphSXBlocks(root, options = {}) {
-  const libraries = collectGraphSXLibraries(root);
+  const libraries = new Map([
+    ...normalizeLibraries(options.libraries),
+    ...collectGraphSXLibraries(root)
+  ]);
   const blocks = [
     ...root.querySelectorAll(".graphsx-block[data-graphsx]"),
     ...root.querySelectorAll("pre > code.language-graphsx")
@@ -75,6 +78,22 @@ export function renderGraphSXBlocks(root, options = {}) {
 
 export function parseGraphWithLibraries(source, libraries, use) {
   return parseGraphSXDocument(source, { libraries, use });
+}
+
+function normalizeLibraries(libraries) {
+  if (!libraries) {
+    return [];
+  }
+  if (libraries instanceof Map) {
+    return libraries.entries();
+  }
+  if (typeof libraries === "object") {
+    return Object.entries(libraries).map(([name, source]) => [
+      name,
+      typeof source === "string" ? { name, source } : source
+    ]);
+  }
+  return [];
 }
 
 export function parseFenceInfo(rawInfo = "") {
