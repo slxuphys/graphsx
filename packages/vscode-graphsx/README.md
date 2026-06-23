@@ -2,6 +2,8 @@
 
 VS Code support for [GraphSX](https://github.com/slxuphys/graphsx), a JSX-like diagram and plot DSL for Markdown notes, documentation, and notebooks.
 
+[Playground](https://slxuphys.github.io/graphsx/) · [GitHub](https://github.com/slxuphys/graphsx) · [Marketplace](https://marketplace.visualstudio.com/items?itemName=slxuphys.graphsx-vscode)
+
 This extension renders `graphsx` fenced blocks in both:
 
 - Markdown files, through VS Code's built-in Markdown preview

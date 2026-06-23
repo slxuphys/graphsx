@@ -2,6 +2,10 @@
 
 GraphSX is a JSX-like DSL for drawing diagrams, plots, and Markdown-native figures as SVG.
 
+[Playground](https://slxuphys.github.io/graphsx/) · [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=slxuphys.graphsx-vscode)
+
+[![VS Code Extension](https://img.shields.io/visual-studio-marketplace/v/slxuphys.graphsx-vscode?label=VS%20Code%20Extension)](https://marketplace.visualstudio.com/items?itemName=slxuphys.graphsx-vscode)
+
 It is designed for notes, papers, docs, and small scientific figures where the source should stay readable:
 
 - JSX-like tags and props instead of a separate command language
@@ -12,6 +16,8 @@ It is designed for notes, papers, docs, and small scientific figures where the s
 - Markdown fences and CodeMirror live-preview widgets
 
 Try the playground: https://slxuphys.github.io/graphsx/
+
+Install the VS Code extension: https://marketplace.visualstudio.com/items?itemName=slxuphys.graphsx-vscode
 
 Current npm package name: `@slxu/graphsx`. Project and repo name: GraphSX.
 
@@ -574,6 +580,8 @@ When the cursor is outside a `graphsx` fence, the fence renders as an SVG widget
 ## VS Code Extension
 
 This repo also contains a VS Code extension in `packages/vscode-graphsx`. It teaches VS Code's built-in Markdown preview and Jupyter notebook Markdown cells to render `graphsx` fenced blocks.
+
+Install it from the Visual Studio Marketplace: https://marketplace.visualstudio.com/items?itemName=slxuphys.graphsx-vscode
 
 Build the extension bundle from the repo root:
 
