@@ -2,7 +2,7 @@
   "name": "graphsx-vscode",
   "displayName": "GraphSX",
   "description": "Render GraphSX fenced code blocks in VS Code Markdown previews and notebook Markdown cells.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "slxuphys",
   "license": "MIT",
   "icon": "assets/icon.png",

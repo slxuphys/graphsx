@@ -14,6 +14,12 @@ export function activate(context) {
   context?.subscriptions.push(
     vscode.workspace.onDidChangeNotebookDocument((event) => {
       queueNotebookLibrarySync(event.notebook);
+    }),
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      const notebook = notebookForDocument(event.document);
+      if (notebook) {
+        queueNotebookLibrarySync(notebook);
+      }
     })
   );
   if (vscode.workspace.onDidOpenNotebookDocument) {
@@ -31,6 +37,22 @@ export function activate(context) {
 }
 
 export function deactivate() {}
+
+function notebookForDocument(document) {
+  if (!document) {
+    return null;
+  }
+  for (const notebook of vscode.workspace.notebookDocuments ?? []) {
+    if (notebook.notebookType !== "jupyter-notebook") {
+      continue;
+    }
+    const match = notebook.getCells().some((cell) => cell.document === document);
+    if (match) {
+      return notebook;
+    }
+  }
+  return null;
+}
 
 function queueNotebookLibrarySync(notebook) {
   if (!notebook || notebook.notebookType !== "jupyter-notebook") {

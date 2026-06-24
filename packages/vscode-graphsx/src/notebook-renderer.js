@@ -33,7 +33,7 @@ function readMetadataLibraries(env) {
   const metadata = env?.metadata ?? env?.cell?.metadata ?? env?.outputItem?.metadata ?? {};
   const rawLibraries = metadata.graphsxLibraries;
   if (!rawLibraries || typeof rawLibraries !== "object") {
-    return [];
+    return {};
   }
-  return Object.entries(rawLibraries).map(([name, source]) => [name, { name, source }]);
+  return rawLibraries;
 }
