@@ -850,7 +850,9 @@
             <h2>Links</h2>
             <div class="syntax-grid">
               <div><code>&lt;Link from="A.out" to="B.in" /&gt;</code></div>
+              <div><code>&lt;Link from="A.right" to="B.left" route="straight" offset={12} /&gt;</code></div>
               <div><code>&lt;Link from="A.right" to="B.top" route="orthogonal" headArrow arrowSize={8} /&gt;</code></div>
+              <div><code>&lt;Link from="A.top" to="B.left" route="bypass" side="left" offset={48} /&gt;</code></div>
               <div><code>&lt;Graph route="auto" grid={20} padding={16} corner={8}&gt;</code></div>
             </div>
           </section>
@@ -1063,9 +1065,11 @@
               <div class="docs-grid">
                 <div class="docs-card">
                   <h3>Routing</h3>
-                  <p><code>route</code> controls link geometry. Use <code>straight</code> for direct segments, <code>orthogonal</code> for right-angle turns, and <code>auto</code> for simple obstacle-aware orthogonal routing. Per-link props override graph defaults.</p>
+                  <p><code>route</code> controls link geometry. Use <code>straight</code> for direct segments, <code>orthogonal</code> for right-angle turns, <code>bypass</code> for residual-style side detours, and <code>auto</code> for simple obstacle-aware orthogonal routing. Straight routes can use a signed <code>offset</code> for connected parallel detours. Per-link props override graph defaults.</p>
                   <pre><code>&lt;Graph route="orthogonal" corner={8}&gt;
   &lt;Link from="A.right" to="B.left" /&gt;
+  &lt;Link from="A.right" to="B.left" route="straight" offset={12} /&gt;
+  &lt;Link from="A.top" to="B.left" route="bypass" side="left" offset={48} /&gt;
   &lt;Link from="B.bottom" to="C.top" route="auto" grid={20} padding={18} /&gt;
 &lt;/Graph&gt;</code></pre>
                 </div>
@@ -1182,7 +1186,7 @@
                   <tr><td><code>Point</code>, <code>Anchor</code></td><td><code>Graph</code>, <code>Shape</code></td><td><code>Port</code></td><td><code>id</code>, <code>at</code>, <code>x</code>, <code>y</code>, <code>label</code>, <code>r</code>, <code>style</code>, <code>useStyle</code></td><td>Shapeless anchor with default <code>center</code> port.</td></tr>
                   <tr><td><code>Plot</code></td><td>Top level, <code>Graph</code></td><td><code>Port</code> in graph use; plot children such as <code>Data</code>, <code>Axis</code>, <code>Line</code>, <code>Legend</code>, annotation tags</td><td><code>id</code>, <code>at</code>, <code>width</code>, <code>height</code>, <code>padding</code>, <code>xDomain</code>, <code>yDomain</code>, <code>frame</code>, <code>frameStyle</code>, <code>box</code>, <code>style</code></td><td>Standalone plot or placed subplot panel.</td></tr>
                   <tr><td><code>Port</code>, <code>Leg</code></td><td>Nodes, shapes, nested graph plots</td><td>None</td><td><code>id</code>, <code>left</code>, <code>right</code>, <code>top</code>, <code>bottom</code>, <code>side</code>, <code>at</code>, <code>x</code>, <code>y</code>, <code>angle</code>, <code>target</code>, <code>label</code>, <code>r</code>, <code>style</code>, <code>useStyle</code></td><td>Defines a connection point.</td></tr>
-                  <tr><td><code>Link</code></td><td><code>Graph</code>, <code>Shape</code>, plot annotations</td><td>None</td><td><code>from</code>, <code>to</code>, <code>route</code>, <code>grid</code>, <code>padding</code>, <code>corner</code>, <code>headArrow</code>, <code>tailArrow</code>, <code>arrowSize</code>, <code>style</code>, <code>useStyle</code></td><td>Connects quoted port addresses such as <code>"A.right"</code>.</td></tr>
+                  <tr><td><code>Link</code></td><td><code>Graph</code>, <code>Shape</code>, plot annotations</td><td>None</td><td><code>from</code>, <code>to</code>, <code>route</code>, <code>side</code>, <code>offset</code>, <code>grid</code>, <code>padding</code>, <code>corner</code>, <code>headArrow</code>, <code>tailArrow</code>, <code>arrowSize</code>, <code>style</code>, <code>useStyle</code></td><td>Connects quoted port addresses such as <code>"A.right"</code>.</td></tr>
                   <tr><td><code>Path</code></td><td><code>Graph</code>, <code>Shape</code>, plot annotations</td><td>None</td><td><code>id</code>, <code>points</code>, <code>d</code>, <code>at</code>, <code>corner</code>, <code>closed</code>, <code>headArrow</code>, <code>tailArrow</code>, <code>arrowSize</code>, <code>rotate</code>, <code>flipX</code>, <code>flipY</code>, <code>style</code>, <code>useStyle</code></td><td>Explicit geometry from <code>points</code> or SVG <code>d</code>.</td></tr>
                   <tr><td><code>Shape</code></td><td><code>Graph</code>, libraries</td><td>Graph node tags, <code>Port</code>, <code>Link</code>, <code>Path</code>, <code>Repeat</code></td><td><code>id</code>, <code>from</code>, <code>groupBox</code>, plus user-defined props forwarded to children</td><td>Reusable composite shape definition.</td></tr>
                   <tr><td><code>Repeat</code></td><td><code>Graph</code>, <code>Shape</code></td><td>Any repeatable graph or shape child</td><td><code>count</code>, <code>as</code>, <code>step</code></td><td>Expands repeated nodes, links, and paths with an index variable.</td></tr>

@@ -542,6 +542,26 @@ test("summarizes rendered graph model", () => {
   });
 });
 
+test("generates offset straight edge path data", () => {
+  const path = edgePathData(
+    { attrs: { route: "straight", offset: 10 } },
+    { x: 0, y: 0 },
+    { x: 100, y: 0 }
+  );
+
+  assert.equal(path, "M 0 0 L 0 10 L 100 10 L 100 0");
+});
+
+test("supports negative straight edge offsets", () => {
+  const path = edgePathData(
+    { attrs: { route: "straight", offset: -10 } },
+    { x: 0, y: 0 },
+    { x: 100, y: 0 }
+  );
+
+  assert.equal(path, "M 0 0 L 0 -10 L 100 -10 L 100 0");
+});
+
 test("generates reusable orthogonal edge path data", () => {
   const path = edgePathData(
     { attrs: { route: "orthogonal", stub: 20 } },
@@ -561,6 +581,29 @@ test("rounds orthogonal edge corners", () => {
 
   assert.match(path, /Q 160 100 160 108/);
   assert.match(path, /Q 160 180 168 180/);
+});
+
+test("generates bypass edge path data", () => {
+  const path = edgePathData(
+    { attrs: { route: "bypass", side: "left", offset: 40 } },
+    { x: 160, y: 260, angle: -90 },
+    { x: 220, y: 120, angle: 180 }
+  );
+
+  assert.equal(path, "M 160 260 L 120 260 L 120 120 L 220 120");
+});
+
+test("rounds bypass edge corners", () => {
+  const path = edgePathData(
+    { attrs: { route: "bypass", side: "right", offset: 50, corner: 10 } },
+    { x: 160, y: 260, angle: -90 },
+    { x: 220, y: 120, angle: 180 }
+  );
+
+  assert.match(path, /^M 160 260 L 260 260/);
+  assert.match(path, /Q 270 260 270 250/);
+  assert.match(path, /Q 270 120 260 120/);
+  assert.match(path, /L 220 120$/);
 });
 
 test("generates obstacle avoiding auto edge path data", () => {

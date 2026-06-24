@@ -228,11 +228,19 @@ Routing options:
 Available routes:
 
 - default curved route
-- `route="straight"`
+- `route="straight"`; add signed `offset` for a connected parallel detour
 - `route="orthogonal"`
+- `route="bypass"` with `side` and `offset` for residual/skip-style detours
 - `route="auto"` for first-pass obstacle avoidance
 
 `route="auto"` avoids shape boxes. It does not yet optimize for edge crossings.
+
+Bypass routes make rounded orthogonal detours around a chosen side:
+
+```jsx
+<Link from="A.right" to="B.left" route="straight" offset={12} />
+<Link from="A.top" to="B.left" route="bypass" side="left" offset={48} corner={16} headArrow />
+```
 
 ### Paths
 
@@ -465,7 +473,7 @@ Graph tags:
 | `Circle` | `Port` | `id`, `at`, `r`, `label`, `anchor`, `origin`, `rotate`, `flipX`, `flipY`, `style`, `useStyle` |
 | `Point`, `Anchor` | `Port` | `id`, `at`, `label`, `r`, `style`, `useStyle` |
 | `Port`, `Leg` | none | `id`, `left`, `right`, `top`, `bottom`, `side`, `at`, `angle`, `target`, `label`, `r`, `style`, `useStyle` |
-| `Link` | none | `from`, `to`, `route`, `corner`, `stub`, `headArrow`, `tailArrow`, `arrowSize`, `style`, `useStyle` |
+| `Link` | none | `from`, `to`, `route`, `side`, `offset`, `corner`, `stub`, `headArrow`, `tailArrow`, `arrowSize`, `style`, `useStyle` |
 | `Path` | none | `points`, `d`, `at`, `corner`, `closed`, `headArrow`, `tailArrow`, `arrowSize`, `rotate`, `flipX`, `flipY`, `style`, `useStyle` |
 | `Shape` | graph nodes, `Port`, `Link`, `Path`, `Repeat` | `id`, `from`, `groupBox`, user-defined props |
 | `Repeat` | repeatable graph children | `count`, `as`, `step` |

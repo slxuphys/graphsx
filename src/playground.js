@@ -82,6 +82,28 @@ const graphExamples = [
 </Graph>`
   },
   {
+    name: "Route Styles",
+    source: `<Graph corner={10}>
+  <Style id="box" fill="#eef6ff" stroke="#1d4ed8" strokeWidth={2} />
+  <Style id="curve" stroke="#7c3aed" strokeWidth={2.5} />
+  <Style id="straight" stroke="#2563eb" strokeWidth={2.5} />
+  <Style id="ortho" stroke="#059669" strokeWidth={2.5} />
+  <Style id="bypass" stroke="#dc2626" strokeWidth={2.5} />
+
+  <Rect id="A" at={[80, 70]} size={[90, 56]} label="A" useStyle="box" />
+  <Rect id="B" at={[360, 70]} size={[90, 56]} label="B" useStyle="box" />
+  <Rect id="C" at={[80, 220]} size={[90, 56]} label="C" useStyle="box" />
+  <Rect id="D" at={[360, 220]} size={[90, 56]} label="D" useStyle="box" />
+
+  <Link from="A.right" to="B.left" useStyle="curve" />
+  <Link from="A.right" to="B.left" route="straight" offset={16} useStyle="straight" />
+  <Link from="A.right" to="B.left" route="straight" offset={-16} useStyle="straight" />
+  <Link from="C.right" to="D.left" route="orthogonal" stub={36} useStyle="ortho" />
+  <Link from="A.bottom" to="D.left" route="bypass" side="right" offset={54} useStyle="bypass" headArrow />
+  <Point id="caption" at={[265, 360]} r={0} label="default curve, straight offsets, orthogonal, bypass" />
+</Graph>`
+  },
+  {
     name: "Layout",
     source: `<Graph layout="dag" direction="right" rankGap={210} nodeGap={95} route="orthogonal" corner={8}>
   <Rect id="A" size={[100, 60]} label="A" />
@@ -113,6 +135,100 @@ const graphExamples = [
   <Pair id="P1" at={[430, 120]} k={1} groupBox={false} />
 
   <Link headArrow from="P0.out" to="P1.in" />
+</Graph>`
+  },
+  {
+    name: "Transformer",
+    source: `<Graph route="orthogonal" corner={14}>
+  <Style id="frame" fill="#f8fafc" stroke="#111111" strokeWidth={3} />
+  <Style id="attn" fill="#fee2b8" stroke="#111111" strokeWidth={2.5} />
+  <Style id="ff" fill="#bfe8f6" stroke="#111111" strokeWidth={2.5} />
+  <Style id="norm" fill="#fbffc4" stroke="#111111" strokeWidth={2.5} />
+  <Style id="embed" fill="#fde2e2" stroke="#111111" strokeWidth={2.2} />
+  <Style id="head" fill="#d9ead9" stroke="#111111" strokeWidth={2.2} />
+  <Style id="linear" fill="#e4e8f6" stroke="#111111" strokeWidth={2.2} />
+  <Style id="wire" stroke="#111111" strokeWidth={3} fill="transparent" />
+  <Style id="hidden" r={0} fill="transparent" stroke="transparent" />
+
+  <Shape id="Block" groupBox={false}>
+    <Rect id="box" at={[0, 0]} size={[w, h]} corner={6} label={label} useStyle={kind}>
+      <Port id="top" top r={0} useStyle="hidden" />
+      <Port id="bottom" bottom r={0} useStyle="hidden" />
+      <Port id="left" left r={0} useStyle="hidden" />
+      <Port id="right" right r={0} useStyle="hidden" />
+    </Rect>
+    <Port id="top" target="box.top" />
+    <Port id="bottom" target="box.bottom" />
+    <Port id="left" target="box.left" />
+    <Port id="right" target="box.right" />
+  </Shape>
+
+  <Shape id="Add" groupBox={false}>
+    <Circle id="plus" at={[0, 0]} r={14} label="+" style={{ fill: "#ffffff", stroke: "#111111", strokeWidth: 2.2 }}>
+      <Port id="top" top r={0} useStyle="hidden" />
+      <Port id="bottom" bottom r={0} useStyle="hidden" />
+    </Circle>
+    <Port id="top" target="plus.top" />
+    <Port id="bottom" target="plus.bottom" />
+  </Shape>
+
+  <Rect id="encoderFrame" at={[70, 180]} size={[330, 520]} corner={28} useStyle="frame" />
+  <Rect id="decoderFrame" at={[470, 20]} size={[340, 680]} corner={28} useStyle="frame" />
+
+  <Block id="inputEmb" at={[145, 840]} w={210} h={72} label="Input Embedding" kind="embed" />
+  <Add id="inputAdd" at={[250, 775]} />
+
+  <Block id="encAttn" at={[135, 505]} w={230} h={92} label="Multi-Head Attention" kind="attn" />
+  <Block id="encNorm1" at={[135, 455]} w={230} h={42} label="Add & Norm" kind="norm" />
+  <Block id="encFF" at={[135, 325]} w={230} h={92} label="Feed Forward" kind="ff" />
+  <Block id="encNorm2" at={[135, 275]} w={230} h={42} label="Add & Norm" kind="norm" />
+
+  <Block id="outEmb" at={[540, 840]} w={210} h={72} label="Output Embedding" kind="embed" />
+  <Add id="outAdd" at={[645, 775]} />
+
+  <Block id="decMasked" at={[530, 505]} w={240} h={112} label="Masked Multi-Head Attention" kind="attn" />
+  <Block id="decNorm1" at={[530, 455]} w={240} h={42} label="Add & Norm" kind="norm" />
+  <Block id="decCross" at={[530, 330]} w={240} h={92} label="Multi-Head Attention" kind="attn" />
+  <Block id="decNorm2" at={[530, 280]} w={240} h={42} label="Add & Norm" kind="norm" />
+  <Block id="decFF" at={[530, 145]} w={240} h={92} label="Feed Forward" kind="ff" />
+  <Block id="decNorm3" at={[530, 95]} w={240} h={42} label="Add & Norm" kind="norm" />
+  <Block id="linear" at={[545, -30]} w={210} h={42} label="Linear" kind="linear" />
+  <Block id="softmax" at={[545, -105]} w={210} h={42} label="Softmax" kind="head" />
+
+  <Link from="inputEmb.top" to="inputAdd.bottom" headArrow useStyle="wire" />
+  <Link from="inputAdd.top" to="encAttn.bottom" headArrow useStyle="wire" />
+  <Link from="encAttn.top" to="encNorm1.bottom" headArrow useStyle="wire" />
+  <Link from="encNorm1.top" to="encFF.bottom" headArrow useStyle="wire" />
+  <Link from="encFF.top" to="encNorm2.bottom" headArrow useStyle="wire" />
+
+  <Link from="outEmb.top" to="outAdd.bottom" headArrow useStyle="wire" />
+  <Link from="outAdd.top" to="decMasked.bottom" headArrow useStyle="wire" />
+  <Link from="decMasked.top" to="decNorm1.bottom" headArrow useStyle="wire" />
+  <Link from="decNorm1.top" to="decCross.bottom" headArrow useStyle="wire" />
+  <Link from="decCross.top" to="decNorm2.bottom" headArrow useStyle="wire" />
+  <Link from="decNorm2.top" to="decFF.bottom" headArrow useStyle="wire" />
+  <Link from="decFF.top" to="decNorm3.bottom" headArrow useStyle="wire" />
+  <Link from="decNorm3.top" to="linear.bottom" headArrow useStyle="wire" />
+  <Link from="linear.top" to="softmax.bottom" headArrow useStyle="wire" />
+
+  <Link from="inputAdd.top" to="encNorm1.left" route="bypass" side="left" offset={54} corner={18} headArrow useStyle="wire" />
+  <Link from="encNorm1.top" to="encNorm2.left" route="bypass" side="left" offset={54} corner={18} headArrow useStyle="wire" />
+
+  <Link from="outAdd.top" to="decNorm1.right" route="bypass" side="right" offset={54} corner={18} headArrow useStyle="wire" />
+  <Link from="decNorm1.top" to="decNorm2.right" route="bypass" side="right" offset={54} corner={18} headArrow useStyle="wire" />
+  <Link from="decNorm2.top" to="decNorm3.right" route="bypass" side="right" offset={54} corner={18} headArrow useStyle="wire" />
+
+  <Path points={[[250, 625], [180, 625], [180, 597]]} corner={18} headArrow useStyle="wire" />
+  <Path points={[[250, 625], [250, 597]]} corner={18} headArrow useStyle="wire" />
+  <Path points={[[250, 625], [320, 625], [320, 597]]} corner={18} headArrow useStyle="wire" />
+
+  <Path points={[[645, 645], [575, 645], [575, 617]]} corner={18} headArrow useStyle="wire" />
+  <Path points={[[645, 645], [645, 617]]} corner={18} headArrow useStyle="wire" />
+  <Path points={[[645, 645], [715, 645], [715, 617]]} corner={18} headArrow useStyle="wire" />
+
+  <Path points={[[400, 300], [470, 300], [530, 375]]} corner={18} headArrow useStyle="wire" />
+  <Path points={[[400, 300], [470, 300], [600, 422]]} corner={18} headArrow useStyle="wire" />
+  <Path points={[[400, 300], [470, 300], [720, 422]]} corner={18} headArrow useStyle="wire" />
 </Graph>`
   },
   {

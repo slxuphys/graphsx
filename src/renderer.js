@@ -85,13 +85,13 @@ export function flattenPaths(graph) {
 export function edgePathData(edge, from, to, offsetX = 0, offsetY = 0, routingContext = null) {
   const route = edge.attrs.route ?? "curve";
   if (route === "straight") {
-    return pathData([
-      { x: from.x + offsetX, y: from.y + offsetY },
-      { x: to.x + offsetX, y: to.y + offsetY }
-    ]);
+    return routedPathData(edge, straightPoints(edge, from, to, offsetX, offsetY));
   }
   if (route === "orthogonal") {
     return routedPathData(edge, orthogonalPoints(edge, from, to, offsetX, offsetY));
+  }
+  if (route === "bypass") {
+    return routedPathData(edge, bypassPoints(edge, from, to, offsetX, offsetY));
   }
   if (route === "auto") {
     return routedPathData(edge, autoRoutePoints(edge, from, to, offsetX, offsetY, routingContext));
@@ -102,6 +102,34 @@ export function edgePathData(edge, from, to, offsetX = 0, offsetY = 0, routingCo
   const fromDir = angleVector(from.angle ?? 0);
   const toDir = angleVector(to.angle ?? 180);
   return `M ${from.x + offsetX} ${from.y + offsetY} C ${from.x + offsetX + fromDir.x * handle} ${from.y + offsetY + fromDir.y * handle}, ${to.x + offsetX + toDir.x * handle} ${to.y + offsetY + toDir.y * handle}, ${to.x + offsetX} ${to.y + offsetY}`;
+}
+
+function straightPoints(edge, from, to, offsetX, offsetY) {
+  const start = { x: from.x + offsetX, y: from.y + offsetY };
+  const end = { x: to.x + offsetX, y: to.y + offsetY };
+  const offset = Number(edge.attrs.offset ?? 0);
+  if (!Number.isFinite(offset) || offset === 0) {
+    return [start, end];
+  }
+
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) {
+    return [start, end];
+  }
+
+  const normal = {
+    x: -dy / length * offset,
+    y: dx / length * offset
+  };
+
+  return compactPoints([
+    start,
+    { x: start.x + normal.x, y: start.y + normal.y },
+    { x: end.x + normal.x, y: end.y + normal.y },
+    end
+  ]);
 }
 
 function drawNodeTree(context, node, offsetX, offsetY) {
@@ -371,6 +399,36 @@ function orthogonalPoints(edge, from, to, offsetX, offsetY) {
     endStub,
     end
   ]);
+}
+
+function bypassPoints(edge, from, to, offsetX, offsetY) {
+  const offset = Number(edge.attrs.offset ?? edge.attrs.bypassOffset ?? edge.attrs.bypassoffset ?? edge.attrs.stub ?? 48);
+  const side = edge.attrs.side ?? inferBypassSide(from, to);
+  const start = { x: from.x + offsetX, y: from.y + offsetY };
+  const end = { x: to.x + offsetX, y: to.y + offsetY };
+
+  if (side === "right") {
+    const x = Math.max(start.x, end.x) + offset;
+    return compactCollinearPoints(compactPoints([start, { x, y: start.y }, { x, y: end.y }, end]));
+  }
+  if (side === "top") {
+    const y = Math.min(start.y, end.y) - offset;
+    return compactCollinearPoints(compactPoints([start, { x: start.x, y }, { x: end.x, y }, end]));
+  }
+  if (side === "bottom") {
+    const y = Math.max(start.y, end.y) + offset;
+    return compactCollinearPoints(compactPoints([start, { x: start.x, y }, { x: end.x, y }, end]));
+  }
+
+  const x = Math.min(start.x, end.x) - offset;
+  return compactCollinearPoints(compactPoints([start, { x, y: start.y }, { x, y: end.y }, end]));
+}
+
+function inferBypassSide(from, to) {
+  if (Math.abs(to.y - from.y) >= Math.abs(to.x - from.x)) {
+    return from.x <= to.x ? "left" : "right";
+  }
+  return from.y <= to.y ? "top" : "bottom";
 }
 
 function autoRoutePoints(edge, from, to, offsetX, offsetY, context) {
