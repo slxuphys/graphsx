@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { edgePathData, graphSummary, parseGraph, parseGraphs, renderGraph } from "../src/index.js";
+import { buildGraphDisplayList, edgePathData, graphSummary, parseGraph, parseGraphs, renderGraph } from "../src/index.js";
 
 function closeTo(actual, expected, message = undefined) {
   assert.ok(Math.abs(actual - expected) < 1e-6, message ?? `${actual} should be close to ${expected}`);
@@ -540,6 +540,53 @@ test("summarizes rendered graph model", () => {
     pathCount: 0,
     text: "2 nodes, 1 link"
   });
+});
+
+test("builds a graph display list before SVG rendering", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[0, 0]} size={[100, 60]} label="$\\alpha$" />
+      <Rect id="B" at={[200, 0]} size={[100, 60]} label="B" />
+      <Link from="A.right" to="B.left" route="straight" offset={10} />
+    </Graph>
+  `);
+
+  const display = buildGraphDisplayList(graph, { minWidth: 0, minHeight: 0, viewportPadding: 0 });
+  const edge = display.items.find((item) => item.layer === "edge");
+  const math = display.items.find((item) => item.type === "math");
+  const text = display.items.find((item) => item.type === "text" && item.text === "B");
+
+  assert.equal(display.type, "graph");
+  assert.equal(edge.type, "path");
+  assert.equal(edge.attrs.d, "M 100 30 L 100 40 L 200 40 L 200 30");
+  assert.equal(math.source, "\\alpha");
+  assert.equal(text.x, 250);
+  assert.equal(text.y, 30);
+});
+
+test("embeds nested plot display lists in graph display lists", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Plot id="loss" at={[10, 20]} width={320} height={220} frame box xDomain={[0, 1]} yDomain={[0, 1]}>
+        <Line points={[[0, 0], [1, 1]]} />
+      </Plot>
+    </Graph>
+  `);
+
+  const display = buildGraphDisplayList(graph, { minWidth: 0, minHeight: 0, viewportPadding: 0 });
+  const plot = display.items.find((item) => item.type === "plot");
+  const plotFrame = plot.displayList.items
+    .flatMap((item) => item.children ?? [])
+    .find((item) => item.attrs?.class === "plot-frame");
+  const plotDataLayer = plot.displayList.items.find((item) => item.attrs?.class === "plot-data");
+
+  assert.equal(plot.attrs.width, 320);
+  assert.equal(plot.attrs.height, 220);
+  assert.equal(plot.displayList.type, "plot");
+  assert.equal(plot.displayList.width, 320);
+  assert.equal(plot.displayList.height, 220);
+  assert.ok(plotFrame);
+  assert.ok(plotDataLayer.children[0].children.find((item) => item.attrs?.class === "plot-line"));
 });
 
 test("generates offset straight edge path data", () => {

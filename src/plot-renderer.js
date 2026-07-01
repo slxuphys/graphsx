@@ -7,6 +7,12 @@ const MATH_HANGING_INSET = 8;
 let plotClipIdCounter = 0;
 
 export function renderPlot(svg, plot, options = {}) {
+  const displayList = buildPlotDisplayList(plot, options);
+  renderPlotDisplayListToSvg(svg, displayList, options);
+  return { width: displayList.width, height: displayList.height, bounds: displayList.bounds };
+}
+
+export function buildPlotDisplayList(plot, options = {}) {
   const width = Number(plot.attrs.width ?? plot.attrs.w ?? options.minWidth ?? 720);
   const height = Number(plot.attrs.height ?? plot.attrs.h ?? options.minHeight ?? 420);
   const padding = normalizePadding(plot.attrs.padding ?? options.padding ?? 56);
@@ -14,8 +20,6 @@ export function renderPlot(svg, plot, options = {}) {
   const xDomain = domainAttr(plot.attrs.xDomain ?? plot.attrs.xdomain, [bounds.minX, bounds.maxX]);
   const yDomain = domainAttr(plot.attrs.yDomain ?? plot.attrs.ydomain, [bounds.minY, bounds.maxY]);
   const context = {
-    document: options.document ?? svg.ownerDocument ?? document,
-    katex: options.katex ?? null,
     plot,
     width,
     height,
@@ -25,9 +29,6 @@ export function renderPlot(svg, plot, options = {}) {
     yDomain: expandDomain(yDomain),
     arrowMarkerPrefix: `graphsx-plot-arrow-${plotClipIdCounter + 1}`
   };
-
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
-  svg.replaceChildren();
 
   const clipId = `graphsx-plot-clip-${plotClipIdCounter += 1}`;
   const defs = el(context, "defs");
@@ -39,7 +40,6 @@ export function renderPlot(svg, plot, options = {}) {
   const annotationLayer = el(context, "g", { class: "plot-annotations" });
   const labelLayer = el(context, "g", { class: "plot-labels" });
   const legendLayer = el(context, "g", { class: "plot-legends" });
-  svg.append(defs, frameLayer, axisLayer, dataLayer, annotationLayer, labelLayer, legendLayer);
 
   if (booleanAttr(plot.attrs.frame, false)) {
     frameLayer.append(drawPlotFrame(context));
@@ -55,7 +55,30 @@ export function renderPlot(svg, plot, options = {}) {
   for (const label of plot.labels) labelLayer.append(drawText(context, label));
   for (const legend of plot.legends ?? []) appendMaybe(legendLayer, drawLegend(context, legend));
 
-  return { width, height, bounds };
+  return {
+    type: "plot",
+    width,
+    height,
+    bounds,
+    xDomain: context.xDomain,
+    yDomain: context.yDomain,
+    padding,
+    clipId,
+    items: [defs, frameLayer, axisLayer, dataLayer, annotationLayer, labelLayer, legendLayer]
+  };
+}
+
+export function renderPlotDisplayListToSvg(svg, displayList, options = {}) {
+  const documentRef = options.document ?? svg.ownerDocument ?? document;
+  const context = {
+    document: documentRef,
+    katex: options.katex ?? null
+  };
+
+  svg.setAttribute("viewBox", `0 0 ${displayList.width} ${displayList.height}`);
+  svg.replaceChildren();
+  svg.append(...displayList.items.map((item) => renderDisplayItem(context, item)).filter(Boolean));
+  return { width: displayList.width, height: displayList.height, bounds: displayList.bounds };
 }
 
 export function plotSummary(plot) {
@@ -788,7 +811,7 @@ function estimateTextWidth(value, fontSize) {
 function drawPlotLabel(context, value, x, y, className, anchor = "middle", style = null, rotate = 0, baseline = null) {
   const label = String(value);
   const math = parseMathLabel(label);
-  if (math && context.katex) {
+  if (math) {
     return drawMathLabel(context, math, x, y, className, anchor, rotate, baseline);
   }
 
@@ -800,24 +823,29 @@ function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, bas
   const height = MATH_LABEL_HEIGHT;
   const left = anchor === "middle" ? x - width / 2 : anchor === "end" ? x - width : x;
   const top = baseline === "hanging" ? y - MATH_HANGING_INSET : y - height / 2;
-  const foreignObject = el(context, "foreignObject", {
-    class: className,
-    x: left,
-    y: top,
+  return {
+    type: "math",
+    source,
+    fallback: source,
+    className,
+    x,
+    y,
+    left,
+    top,
     width,
     height,
-    ...(rotate ? { transform: `rotate(${rotate} ${x} ${y})` } : {})
-  });
-  const host = context.document.createElement("div");
-  host.style.width = `${width}px`;
-  host.style.height = `${height}px`;
-  host.style.display = "flex";
-  host.style.alignItems = "center";
-  host.style.justifyContent = anchor === "middle" ? "center" : anchor === "end" ? "flex-end" : "flex-start";
-  host.style.color = "#1e2724";
-  context.katex.render(source, host, { throwOnError: false });
-  foreignObject.append(host);
-  return foreignObject;
+    anchor,
+    rotate,
+    baseline,
+    attrs: {
+      class: className,
+      x: left,
+      y: top,
+      width,
+      height,
+      ...(rotate ? { transform: `rotate(${rotate} ${x} ${y})` } : {})
+    }
+  };
 }
 
 function parseMathLabel(label) {
@@ -987,13 +1015,69 @@ function svgAttrName(key) {
 }
 
 function el(context, tag, attrs = {}, text = null) {
-  const node = context.document.createElementNS(SVG_NS, tag);
+  return {
+    type: "element",
+    tag,
+    attrs: cleanAttrs(attrs),
+    text,
+    children: [],
+    append(...children) {
+      this.children.push(...children.filter(Boolean));
+    }
+  };
+}
+
+function cleanAttrs(attrs) {
+  const clean = {};
   for (const [key, value] of Object.entries(attrs)) {
     if (value == null || value === false) continue;
-    node.setAttribute(svgAttrName(key), String(value));
+    clean[svgAttrName(key)] = value;
   }
-  if (text != null) node.textContent = text;
+  return clean;
+}
+
+function renderDisplayItem(context, item) {
+  if (!item) return null;
+  if (item.type === "math") return renderMathItem(context, item);
+  if (item.type !== "element") return null;
+
+  const node = context.document.createElementNS(SVG_NS, item.tag);
+  for (const [key, value] of Object.entries(item.attrs ?? {})) {
+    node.setAttribute(key, String(value));
+  }
+  if (item.text != null) node.textContent = item.text;
+  if (item.children?.length) {
+    node.append(...item.children.map((child) => renderDisplayItem(context, child)).filter(Boolean));
+  }
   return node;
+}
+
+function renderMathItem(context, item) {
+  if (!context.katex) {
+    return renderDisplayItem(context, el(context, "text", {
+      class: item.className,
+      fill: "#111111",
+      fontSize: 12,
+      fontFamily: "ui-sans-serif, system-ui, sans-serif",
+      x: item.x,
+      y: item.y,
+      textAnchor: item.anchor,
+      ...(item.baseline ? { dominantBaseline: item.baseline } : {}),
+      ...(item.rotate ? { transform: `rotate(${item.rotate} ${item.x} ${item.y})` } : {})
+    }, item.fallback));
+  }
+
+  const foreignObject = renderDisplayItem(context, el(context, "foreignObject", item.attrs));
+  const host = context.document.createElement("div");
+  host.style.width = `${item.width}px`;
+  host.style.height = `${item.height}px`;
+  host.style.display = "flex";
+  host.style.alignItems = "center";
+  host.style.justifyContent = item.anchor === "middle" ? "center" : item.anchor === "end" ? "flex-end" : "flex-start";
+  host.style.color = "#1e2724";
+  context.katex.render(item.source, host, { throwOnError: false });
+  foreignObject.append(host);
+  return foreignObject;
 }
 
 function appendMaybe(parent, child) {

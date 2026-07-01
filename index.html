@@ -271,11 +271,31 @@
         font: 700 13px/1 ui-sans-serif, system-ui, sans-serif;
       }
 
+      .zoom-controls select {
+        min-width: 104px;
+        max-width: 112px;
+        height: 34px;
+        padding-left: 9px;
+        font-size: 12px;
+      }
+
       .zoom-controls #zoomOut,
       .zoom-controls #zoomIn {
         min-width: 38px;
         font-size: 17px;
         font-weight: 650;
+      }
+
+      .zoom-controls #downloadSvg {
+        min-width: 38px;
+        padding: 0;
+      }
+
+      .zoom-controls #downloadSvg svg {
+        position: static;
+        width: 17px;
+        height: 17px;
+        transform: none;
       }
 
       .mode-controls {
@@ -960,6 +980,15 @@
             <button class="icon-button" id="zoomIn" type="button" aria-label="Zoom in" title="Zoom in">+</button>
             <button class="icon-button" id="zoomFit" type="button" aria-label="Fit to view" title="Fit to view">Fit</button>
             <button class="icon-button" id="zoomReset" type="button" aria-label="Reset zoom" title="Reset zoom">1:1</button>
+            <select id="downloadScope" aria-label="SVG download scope" title="SVG download scope">
+              <option value="content">Content</option>
+              <option value="canvas">Canvas</option>
+            </select>
+            <button class="icon-button" id="downloadSvg" type="button" aria-label="Download SVG" title="Download SVG">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </button>
           </div>
           <div id="summary" class="status">0 nodes</div>
         </div>

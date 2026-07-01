@@ -736,6 +736,8 @@ const zoomIn = document.querySelector("#zoomIn");
 const zoomReset = document.querySelector("#zoomReset");
 const zoomFit = document.querySelector("#zoomFit");
 const zoomValue = document.querySelector("#zoomValue");
+const downloadScope = document.querySelector("#downloadScope");
+const downloadSvg = document.querySelector("#downloadSvg");
 const zoomStep = 1.2;
 const minZoom = 0.25;
 const maxZoom = 4;
@@ -834,6 +836,7 @@ zoomReset.addEventListener("click", () => {
   applyViewport();
 });
 zoomFit.addEventListener("click", fitToView);
+downloadSvg.addEventListener("click", downloadRenderedSvg);
 syntaxToggle.addEventListener("click", () => {
   syntaxCollapsed = !syntaxCollapsed;
   storeValue("syntaxCollapsed", String(syntaxCollapsed));
@@ -1152,6 +1155,103 @@ function applyViewport() {
   svg.style.height = `${renderedSize.height}px`;
   svg.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
   zoomValue.textContent = `${Math.round(zoom * 100)}%`;
+}
+
+function downloadRenderedSvg() {
+  if (currentMode !== "graph" || status.classList.contains("error")) return;
+  const scope = downloadScope.value;
+  const exported = scope === "canvas" ? canvasSvgSource() : contentSvgSource();
+  const blob = new Blob([exported], { type: "image/svg+xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `graphsx-${scope}.svg`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function contentSvgSource() {
+  const clone = svg.cloneNode(true);
+  prepareExportSvg(clone, renderedSize.width, renderedSize.height);
+  return serializeSvg(clone);
+}
+
+function canvasSvgSource() {
+  const width = Math.max(1, Math.round(canvas.clientWidth));
+  const height = Math.max(1, Math.round(canvas.clientHeight));
+  const exportSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  prepareExportSvg(exportSvg, width, height);
+
+  const background = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+  background.setAttribute("width", String(width));
+  background.setAttribute("height", String(height));
+  background.setAttribute("fill", "#fbfcfa");
+  exportSvg.append(background);
+
+  const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+  group.setAttribute("transform", `translate(${formatNumber(pan.x)} ${formatNumber(pan.y)}) scale(${formatNumber(zoom)})`);
+  const source = svg.cloneNode(true);
+  for (const child of Array.from(source.childNodes)) {
+    group.append(child);
+  }
+  exportSvg.append(group);
+  return serializeSvg(exportSvg);
+}
+
+function prepareExportSvg(target, width, height) {
+  target.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  target.setAttribute("width", String(Math.round(width)));
+  target.setAttribute("height", String(Math.round(height)));
+  target.setAttribute("viewBox", `0 0 ${formatNumber(width)} ${formatNumber(height)}`);
+  target.removeAttribute("style");
+  target.removeAttribute("hidden");
+  target.removeAttribute("aria-label");
+  target.removeAttribute("role");
+  target.prepend(exportStyleElement());
+}
+
+function serializeSvg(target) {
+  return `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(target)}\n`;
+}
+
+function formatNumber(value) {
+  return Number(value.toFixed(4)).toString();
+}
+
+function exportStyleElement() {
+  const style = document.createElementNS("http://www.w3.org/2000/svg", "style");
+  style.textContent = `
+    .node-label { font: 700 13px ui-sans-serif, system-ui, sans-serif; fill: #1e2724; pointer-events: none; }
+    .leg-label { font: 11px ui-sans-serif, system-ui, sans-serif; fill: #52605a; pointer-events: none; }
+    .shape { fill: #ffffff; stroke: #26312d; stroke-width: 2; }
+    .group-box { fill: rgba(45, 108, 223, 0.05); stroke: rgba(45, 108, 223, 0.45); stroke-dasharray: 6 5; }
+    .edge { fill: none; stroke: #2d6cdf; stroke-width: 2.5; }
+    .path { fill: none; stroke: #111111; stroke-width: 2; }
+    .leg-dot { fill: #16846f; stroke: #ffffff; stroke-width: 2; }
+    .katex-mathml { display: none; }
+    ${collectKatexCss()}
+  `;
+  return style;
+}
+
+function collectKatexCss() {
+  const rules = [];
+  for (const sheet of Array.from(document.styleSheets)) {
+    let cssRules = [];
+    try {
+      cssRules = Array.from(sheet.cssRules ?? []);
+    } catch {
+      continue;
+    }
+    for (const rule of cssRules) {
+      if (rule.cssText.includes(".katex") || rule.cssText.includes("KaTeX_")) {
+        rules.push(rule.cssText);
+      }
+    }
+  }
+  return rules.join("\n");
 }
 
 function applySyntaxPaneState() {

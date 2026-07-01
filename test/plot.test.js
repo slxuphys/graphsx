@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parsePlot, parsePlots, plotSummary, renderPlot } from "../src/index.js";
+import { buildPlotDisplayList, parsePlot, parsePlots, plotSummary, renderPlot } from "../src/index.js";
 
 test("parses independent plot blocks", () => {
   const plot = parsePlot(`
@@ -22,6 +22,31 @@ test("parses independent plot blocks", () => {
   assert.deepEqual(plot.marks[0].at, { x: 2, y: 4 });
   assert.equal(plot.labels[0].text, "peak");
   assert.equal(plotSummary(plot).text, "1 curve, 1 line, 1 mark");
+});
+
+test("builds a plot display list before SVG rendering", () => {
+  const plot = parsePlot(`
+    <Plot width={400} height={260} xDomain={[0, 2]} yDomain={[0, 2]} box>
+      <Axis x label="$x$" ticks />
+      <Axis y label="y" ticks />
+      <Line points={[[0, 0], [1, 1], [2, 0]]} />
+      <Text at={[1, 1]} label="$p$" />
+    </Plot>
+  `);
+
+  const display = buildPlotDisplayList(plot);
+  const dataLayer = display.items.find((item) => item.attrs?.class === "plot-data");
+  const labelLayer = display.items.find((item) => item.attrs?.class === "plot-labels");
+  const linePath = dataLayer.children[0].children.find((item) => item.tag === "path");
+  const mathLabel = labelLayer.children.find((item) => item.type === "math");
+
+  assert.equal(display.type, "plot");
+  assert.equal(display.width, 400);
+  assert.equal(display.height, 260);
+  assert.equal(dataLayer.attrs["clip-path"], `url(#${display.clipId})`);
+  assert.equal(linePath.attrs.class, "plot-line");
+  assert.match(linePath.attrs.d, /^M /);
+  assert.equal(mathLabel.source, "p");
 });
 
 test("parses multiple plot blocks", () => {

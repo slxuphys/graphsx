@@ -20,6 +20,8 @@ export {
 
 export {
   renderGraph,
+  buildGraphDisplayList,
+  renderGraphDisplayListToSvg,
   graphSummary,
   flattenNodes,
   flattenEdges,
@@ -29,6 +31,8 @@ export {
 
 export {
   renderPlot,
+  buildPlotDisplayList,
+  renderPlotDisplayListToSvg,
   plotSummary
 } from "./plot-renderer.js";
 

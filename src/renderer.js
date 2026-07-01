@@ -1,8 +1,18 @@
-import { renderPlot } from "./plot-renderer.js";
+import { buildPlotDisplayList, renderPlotDisplayListToSvg } from "./plot-renderer.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 export function renderGraph(svg, graph, options = {}) {
+  const displayList = buildGraphDisplayList(graph, options);
+  renderGraphDisplayListToSvg(svg, displayList, options);
+  return {
+    width: displayList.width,
+    height: displayList.height,
+    bounds: displayList.bounds
+  };
+}
+
+export function buildGraphDisplayList(graph, options = {}) {
   const nodes = flattenNodes(graph.nodes);
   const edges = flattenEdges(graph);
   const paths = flattenPaths(graph);
@@ -14,15 +24,49 @@ export function renderGraph(svg, graph, options = {}) {
   const offsetX = viewportPadding - bounds.minX;
   const offsetY = viewportPadding - bounds.minY;
   const context = {
-    document: options.document ?? svg.ownerDocument ?? document,
-    katex: options.katex ?? null,
     graph,
     nodes,
     routing: routingDefaults(graph.attrs),
     arrowMarkers: collectArrowMarkerKeys(edges, paths)
   };
+  const items = [];
 
-  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  for (const edge of edges) {
+    const from = legs.get(edge.from);
+    const to = legs.get(edge.to);
+    if (!from || !to) continue;
+    items.push(edgeDisplayItem(context, resolveEdgeRouting(edge, context.routing), from, to, offsetX, offsetY));
+  }
+
+  for (const path of paths) {
+    items.push(pathDisplayItem(context, path, offsetX, offsetY));
+  }
+
+  for (const node of graph.nodes) {
+    items.push(...nodeTreeDisplayItems(context, node, offsetX, offsetY));
+  }
+
+  return {
+    type: "graph",
+    width,
+    height,
+    bounds,
+    nodes,
+    edges,
+    paths,
+    arrowMarkers: context.arrowMarkers,
+    items
+  };
+}
+
+export function renderGraphDisplayListToSvg(svg, displayList, options = {}) {
+  const context = {
+    document: options.document ?? svg.ownerDocument ?? document,
+    katex: options.katex ?? null,
+    arrowMarkers: displayList.arrowMarkers
+  };
+
+  svg.setAttribute("viewBox", `0 0 ${displayList.width} ${displayList.height}`);
   svg.replaceChildren();
   svg.append(defs(context));
 
@@ -31,22 +75,250 @@ export function renderGraph(svg, graph, options = {}) {
   const nodeLayer = el(context, "g");
   svg.append(edgeLayer, pathLayer, nodeLayer);
 
-  for (const edge of edges) {
-    const from = legs.get(edge.from);
-    const to = legs.get(edge.to);
-    if (!from || !to) continue;
-    edgeLayer.append(drawEdge(context, resolveEdgeRouting(edge, context.routing), from, to, offsetX, offsetY));
+  for (const item of displayList.items) {
+    const target = item.layer === "edge" ? edgeLayer : item.layer === "path" ? pathLayer : nodeLayer;
+    appendMaybe(target, renderDisplayItem(context, item));
   }
 
-  for (const path of paths) {
-    pathLayer.append(drawPath(context, path, offsetX, offsetY));
+  return {
+    width: displayList.width,
+    height: displayList.height,
+    bounds: displayList.bounds
+  };
+}
+
+function nodeTreeDisplayItems(context, node, offsetX, offsetY) {
+  const items = [];
+  if (node.children.length > 0 || (node.paths?.length ?? 0) > 0) {
+    if (showsGroupBox(node)) {
+      items.push(...groupBoxDisplayItems(context, node, offsetX, offsetY));
+    } else {
+      appendItem(items, nodeLabelDisplayItem(node, offsetX, offsetY));
+    }
+    for (const child of node.children) {
+      items.push(...nodeTreeDisplayItems(context, child, offsetX, offsetY));
+    }
+    for (const leg of Object.values(node.legs)) {
+      items.push(...legDisplayItems(leg, offsetX, offsetY));
+    }
+    return items;
   }
 
-  for (const node of graph.nodes) {
-    nodeLayer.append(drawNodeTree(context, node, offsetX, offsetY));
+  appendItem(items, shapeDisplayItem(node, offsetX, offsetY));
+  appendItem(items, nodeLabelDisplayItem(node, offsetX, offsetY));
+  for (const leg of Object.values(node.legs)) {
+    items.push(...legDisplayItems(leg, offsetX, offsetY));
+  }
+  return items;
+}
+
+function shapeDisplayItem(node, offsetX, offsetY) {
+  if (node.shape === "point") {
+    return null;
   }
 
-  return { width, height, bounds };
+  const transform = node.transform ? viewportMatrixAttr(node.transform, offsetX, offsetY) : null;
+  if (node.shape === "plot") {
+    const width = Number(node.attrs.width ?? node.attrs.w ?? 720);
+    const height = Number(node.attrs.height ?? node.attrs.h ?? 420);
+    return {
+      layer: "node",
+      type: "plot",
+      displayList: buildPlotDisplayList(node.plot, { minWidth: width, minHeight: height }),
+      attrs: {
+        class: "plot-node",
+        x: node.transform ? node.x : node.x + offsetX,
+        y: node.transform ? node.y : node.y + offsetY,
+        width,
+        height,
+        overflow: "visible",
+        ...(transform ? { transform } : {})
+      },
+      style: node.attrs.style
+    };
+  }
+
+  if (node.shape === "circle") {
+    return {
+      layer: "node",
+      type: "circle",
+      attrs: {
+        class: "shape",
+        cx: node.transform ? node.x : node.x + offsetX,
+        cy: node.transform ? node.y : node.y + offsetY,
+        r: Number(node.attrs.r ?? 28),
+        fill: "#ffffff",
+        stroke: "#26312d",
+        "stroke-width": 2,
+        ...(transform ? { transform } : {})
+      },
+      style: node.attrs.style
+    };
+  }
+
+  return {
+    layer: "node",
+    type: "rect",
+    attrs: {
+      class: "shape",
+      x: node.transform ? node.x : node.x + offsetX,
+      y: node.transform ? node.y : node.y + offsetY,
+      width: Number(node.attrs.w ?? 100),
+      height: Number(node.attrs.h ?? 60),
+      rx: Number(node.attrs.corner ?? node.attrs.rx ?? 6),
+      fill: "#ffffff",
+      stroke: "#26312d",
+      "stroke-width": 2,
+      ...(transform ? { transform } : {})
+    },
+    style: node.attrs.style
+  };
+}
+
+function groupBoxDisplayItems(context, node, offsetX, offsetY) {
+  const nestedNodes = flattenNodes([node]);
+  const bounds = getBounds(nestedNodes, [], indexLegs(nestedNodes));
+  const padding = 22;
+  const items = [{
+    layer: "node",
+    type: "rect",
+    attrs: {
+      class: "group-box",
+      x: bounds.minX + offsetX - padding,
+      y: bounds.minY + offsetY - padding,
+      width: Math.max(80, bounds.maxX - bounds.minX + padding * 2),
+      height: Math.max(54, bounds.maxY - bounds.minY + padding * 2),
+      rx: 8,
+      fill: "rgba(45, 108, 223, 0.05)",
+      stroke: "rgba(45, 108, 223, 0.45)",
+      "stroke-dasharray": "6 5"
+    }
+  }];
+  appendItem(items, nodeLabelDisplayItem(node, offsetX, offsetY, {
+    x: node.x,
+    y: bounds.minY - 30
+  }));
+  return items;
+}
+
+function nodeLabelDisplayItem(node, offsetX, offsetY, position = null) {
+  if (node.attrs.label == null) {
+    return null;
+  }
+  const box = nodeBox(node);
+  const x = position?.x ?? box.cx;
+  const y = position?.y ?? box.cy;
+  return labelDisplayItem(node.attrs.label, x + offsetX, y + offsetY, "node-label");
+}
+
+function legDisplayItems(leg, offsetX, offsetY) {
+  if (leg.auto && leg.attrs.label == null && leg.attrs.style == null) {
+    return [];
+  }
+  const items = [{
+    layer: "node",
+    type: "circle",
+    attrs: {
+      class: "leg-dot",
+      cx: leg.x + offsetX,
+      cy: leg.y + offsetY,
+      r: Number(leg.attrs.r ?? 5),
+      fill: "#16846f",
+      stroke: "#ffffff",
+      "stroke-width": 2
+    },
+    style: leg.attrs.style
+  }];
+  if (leg.attrs.label != null) {
+    items.push(labelDisplayItem(leg.attrs.label, leg.x + offsetX + 10, leg.y + offsetY - 10, "leg-label", "start"));
+  }
+  return items;
+}
+
+function labelDisplayItem(value, x, y, className, anchor = "middle") {
+  const label = String(value);
+  const math = parseMathLabel(label);
+  return math
+    ? { layer: "node", type: "math", source: math, x, y, className, anchor }
+    : { layer: "node", type: "text", text: label, x, y, className, anchor };
+}
+
+function edgeDisplayItem(context, edge, from, to, offsetX, offsetY) {
+  return {
+    layer: "edge",
+    type: "path",
+    attrs: {
+      class: "edge",
+      fill: "none",
+      stroke: "#2d6cdf",
+      "stroke-width": 2.5,
+      ...arrowMarkerAttrs(context, edge.attrs),
+      d: edgePathData(edge, from, to, offsetX, offsetY, context)
+    },
+    style: edge.attrs.style
+  };
+}
+
+function pathDisplayItem(context, path, offsetX, offsetY) {
+  const attrs = {
+    class: "path",
+    fill: "none",
+    stroke: "#111111",
+    "stroke-width": 2,
+    ...arrowMarkerAttrs(context, path.attrs),
+    d: explicitPathData(path, offsetX, offsetY)
+  };
+  if (!Array.isArray(path.points)) {
+    if (path.transform) {
+      attrs.transform = `${viewportMatrixAttr(path.transform, offsetX, offsetY)} translate(${path.x ?? 0} ${path.y ?? 0})`;
+    } else if (path.x || path.y) {
+      attrs.transform = `translate(${path.x + offsetX} ${path.y + offsetY})`;
+    }
+  }
+  return {
+    layer: "path",
+    type: "path",
+    attrs,
+    style: path.attrs.style
+  };
+}
+
+function renderDisplayItem(context, item) {
+  if (item.type === "plot") {
+    const plotSvg = styledEl(context, "svg", item.style, item.attrs);
+    renderPlotDisplayListToSvg(plotSvg, item.displayList, {
+      document: context.document,
+      katex: context.katex
+    });
+    return plotSvg;
+  }
+  if (item.type === "rect" || item.type === "circle" || item.type === "path") {
+    return styledEl(context, item.type, item.style, item.attrs);
+  }
+  if (item.type === "math") {
+    return context.katex
+      ? drawMathLabel(context, item.source, item.x, item.y, item.className, item.anchor)
+      : drawPlainDisplayText(context, item.source, item.x, item.y, item.className, item.anchor);
+  }
+  if (item.type === "text") {
+    return drawPlainDisplayText(context, item.text, item.x, item.y, item.className, item.anchor);
+  }
+  return null;
+}
+
+function drawPlainDisplayText(context, text, x, y, className, anchor = "middle") {
+  return el(context, "text", {
+    class: className,
+    x,
+    y: y + 4,
+    "text-anchor": anchor
+  }, text);
+}
+
+function appendItem(items, item) {
+  if (item) {
+    items.push(item);
+  }
 }
 
 export function graphSummary(graph) {
@@ -168,16 +440,18 @@ function drawShape(context, node, offsetX, offsetY) {
 
   const transform = node.transform ? viewportMatrixAttr(node.transform, offsetX, offsetY) : null;
   if (node.shape === "plot") {
+    const width = Number(node.attrs.width ?? node.attrs.w ?? 720);
+    const height = Number(node.attrs.height ?? node.attrs.h ?? 420);
     const plotSvg = styledEl(context, "svg", node.attrs.style, {
       class: "plot-node",
       x: node.transform ? node.x : node.x + offsetX,
       y: node.transform ? node.y : node.y + offsetY,
-      width: Number(node.attrs.width ?? node.attrs.w ?? 720),
-      height: Number(node.attrs.height ?? node.attrs.h ?? 420),
+      width,
+      height,
       overflow: "visible",
       ...(transform ? { transform } : {})
     });
-    renderPlot(plotSvg, node.plot, {
+    renderPlotDisplayListToSvg(plotSvg, buildPlotDisplayList(node.plot, { minWidth: width, minHeight: height }), {
       document: context.document,
       katex: context.katex
     });
