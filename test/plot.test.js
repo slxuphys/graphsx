@@ -43,9 +43,13 @@ test("builds a plot display list before SVG rendering", () => {
   assert.equal(display.type, "plot");
   assert.equal(display.width, 400);
   assert.equal(display.height, 260);
-  assert.equal(dataLayer.props.clipPath, `url(#${display.clipId})`);
+  assert.deepEqual(dataLayer.props.clip, display.clips[0]);
   assert.equal(linePath.props.className, "plot-line");
-  assert.match(linePath.props.path, /^M /);
+  assert.deepEqual(linePath.props.commands, [
+    { op: "moveTo", x: 56, y: 204 },
+    { op: "lineTo", x: 200, y: 130 },
+    { op: "lineTo", x: 344, y: 204 }
+  ]);
   assert.equal(mathLabel.source, "p");
   assert.equal(mathLabel.fontSize, 18);
 });

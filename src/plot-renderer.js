@@ -30,13 +30,12 @@ export function buildPlotDisplayList(plot, options = {}) {
     arrowMarkerPrefix: `graphsx-plot-arrow-${plotClipIdCounter + 1}`
   };
 
-  const clipId = `graphsx-plot-clip-${plotClipIdCounter += 1}`;
+  const clip = plotClipShape(context, `graphsx-plot-clip-${plotClipIdCounter += 1}`);
   const defs = el(context, "defs");
-  defs.append(drawPlotClipPath(context, clipId));
   appendArrowMarkers(context, defs);
   const frameLayer = el(context, "g", { class: "plot-frame-layer" });
   const axisLayer = el(context, "g", { class: "plot-axes" });
-  const dataLayer = el(context, "g", { class: "plot-data", clipPath: `url(#${clipId})` });
+  const dataLayer = el(context, "g", { class: "plot-data", clip });
   const annotationLayer = el(context, "g", { class: "plot-annotations" });
   const labelLayer = el(context, "g", { class: "plot-labels" });
   const legendLayer = el(context, "g", { class: "plot-legends" });
@@ -63,7 +62,7 @@ export function buildPlotDisplayList(plot, options = {}) {
     xDomain: context.xDomain,
     yDomain: context.yDomain,
     padding,
-    clipId,
+    clips: [clip],
     arrowMarkerPrefix: context.arrowMarkerPrefix,
     items: [defs, frameLayer, axisLayer, dataLayer, annotationLayer, labelLayer, legendLayer]
   };
@@ -79,7 +78,10 @@ export function renderPlotDisplayListToSvg(svg, displayList, options = {}) {
 
   svg.setAttribute("viewBox", `0 0 ${displayList.width} ${displayList.height}`);
   svg.replaceChildren();
-  svg.append(...displayList.items.map((item) => renderDisplayItem(context, item)).filter(Boolean));
+  svg.append(...[
+    ...clipDefs(context, displayList.clips ?? []),
+    ...displayList.items
+  ].map((item) => renderDisplayItem(context, item)).filter(Boolean));
   return { width: displayList.width, height: displayList.height, bounds: displayList.bounds };
 }
 
@@ -314,15 +316,32 @@ function drawPlotFrame(context) {
   });
 }
 
-function drawPlotClipPath(context, id) {
-  const clipPath = el(context, "clipPath", { id });
-  clipPath.append(el(context, "rect", {
+function plotClipShape(context, id) {
+  return {
+    id,
+    type: "rect",
     x: context.padding.left,
     y: context.padding.top,
     width: plotWidth(context),
     height: plotHeight(context)
-  }));
-  return clipPath;
+  };
+}
+
+function clipDefs(context, clips) {
+  if (!clips.length) return [];
+  const defs = el(context, "defs");
+  for (const clip of clips) {
+    if (clip.type !== "rect") continue;
+    const clipPath = el(context, "clipPath", { id: clip.id });
+    clipPath.append(el(context, "rect", {
+      x: clip.x,
+      y: clip.y,
+      width: clip.width,
+      height: clip.height
+    }));
+    defs.append(clipPath);
+  }
+  return [defs];
 }
 
 function appendArrowMarkers(context, defs) {
@@ -404,7 +423,7 @@ function drawPlainLabel(context, label, x, y, className, anchor, style = null, r
     y,
     textAnchor: anchor,
     ...(baseline ? { dominantBaseline: baseline } : {}),
-    ...(rotate ? { transform: `rotate(${rotate} ${x} ${y})` } : {})
+    ...(rotate ? { transform: [rotateTransform(rotate, x, y)] } : {})
   }, String(label));
 }
 
@@ -455,7 +474,7 @@ function drawSeries(context, series, options) {
       stroke: "#2d6cdf",
       strokeWidth: 2,
       ...(fmt.dash ? { strokeDasharray: fmt.dash } : {}),
-      d: pathData(points)
+      commands: pathCommands(points)
     }));
   }
 
@@ -613,7 +632,7 @@ function drawAnnotationLink(context, link, from, to) {
     stroke: "#111111",
     strokeWidth: 1.5,
     ...annotationArrowDisplayProps(link.attrs),
-    d: `M ${from.x} ${from.y} L ${to.x} ${to.y}`
+    commands: pathCommands([from, to])
   });
 }
 
@@ -624,28 +643,40 @@ function drawAnnotationPath(context, path) {
     stroke: "#111111",
     strokeWidth: 1.5,
     ...annotationArrowDisplayProps(path.attrs),
-    d: annotationPathData(context, path)
+    commands: annotationPathCommands(context, path)
   };
   return styledEl(context, "path", path.attrs.style, attrs);
 }
 
 function annotationPathData(context, path) {
+  return commandsToPathData(annotationPathCommands(context, path));
+}
+
+function annotationPathCommands(context, path) {
   if (Array.isArray(path.points)) {
     const points = path.points.map((point) => (path.atUnit === "screen" ? point : project(context, point)));
-    const data = routedAnnotationPathData(points, Number(path.attrs.corner ?? 0));
-    return booleanAttr(path.attrs.closed, false) ? `${data} Z` : data;
+    const commands = routedAnnotationPathCommands(points, Number(path.attrs.corner ?? 0));
+    return booleanAttr(path.attrs.closed, false) ? [...commands, { op: "closePath" }] : commands;
   }
-  return path.attrs.d ?? "";
+  return parsePathCommands(path.attrs.d ?? "");
 }
 
 function routedAnnotationPathData(points, corner) {
-  if (!corner || points.length < 3) return pathData(points);
-  return roundedPathData(points, corner);
+  return commandsToPathData(routedAnnotationPathCommands(points, corner));
+}
+
+function routedAnnotationPathCommands(points, corner) {
+  if (!corner || points.length < 3) return pathCommands(points);
+  return roundedPathCommands(points, corner);
 }
 
 function roundedPathData(points, radius) {
-  if (points.length < 3) return pathData(points);
-  const commands = [`M ${points[0].x} ${points[0].y}`];
+  return commandsToPathData(roundedPathCommands(points, radius));
+}
+
+function roundedPathCommands(points, radius) {
+  if (points.length < 3) return pathCommands(points);
+  const commands = [{ op: "moveTo", x: points[0].x, y: points[0].y }];
   for (let index = 1; index < points.length - 1; index += 1) {
     const previous = points[index - 1];
     const current = points[index];
@@ -654,7 +685,7 @@ function roundedPathData(points, radius) {
     const outLength = Math.hypot(next.x - current.x, next.y - current.y);
     const cut = Math.min(Number(radius), inLength / 2, outLength / 2);
     if (!Number.isFinite(cut) || cut <= 0) {
-      commands.push(`L ${current.x} ${current.y}`);
+      commands.push({ op: "lineTo", x: current.x, y: current.y });
       continue;
     }
     const before = {
@@ -665,11 +696,11 @@ function roundedPathData(points, radius) {
       x: current.x + (next.x - current.x) / outLength * cut,
       y: current.y + (next.y - current.y) / outLength * cut
     };
-    commands.push(`L ${before.x} ${before.y}`, `Q ${current.x} ${current.y} ${after.x} ${after.y}`);
+    commands.push({ op: "lineTo", x: before.x, y: before.y }, { op: "quadraticTo", x1: current.x, y1: current.y, x: after.x, y: after.y });
   }
   const last = points[points.length - 1];
-  commands.push(`L ${last.x} ${last.y}`);
-  return commands.join(" ");
+  commands.push({ op: "lineTo", x: last.x, y: last.y });
+  return commands;
 }
 
 function drawLegend(context, legend) {
@@ -687,7 +718,7 @@ function drawLegend(context, legend) {
   const position = legendPosition(context, legend, width, height);
   const group = el(context, "g", {
     class: "plot-legend",
-    transform: `translate(${position.x} ${position.y})`
+    transform: [translateTransform(position.x, position.y)]
   });
 
   if (booleanAttr(legend.attrs.box, true)) {
@@ -848,7 +879,7 @@ function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, bas
       y: top,
       width,
       height,
-      ...(rotate ? { transform: `rotate(${rotate} ${x} ${y})` } : {})
+      ...(rotate ? { transform: [rotateTransform(rotate, x, y)] } : {})
     }
   };
 }
@@ -985,6 +1016,10 @@ function normalizePadding(value) {
 }
 
 function pathData(points) {
+  return commandsToPathData(pathCommands(points));
+}
+
+function pathCommands(points) {
   const commands = [];
   let open = false;
   for (const point of points) {
@@ -992,10 +1027,118 @@ function pathData(points) {
       open = false;
       continue;
     }
-    commands.push(`${open ? "L" : "M"} ${point.x} ${point.y}`);
+    commands.push({
+      op: open ? "lineTo" : "moveTo",
+      x: point.x,
+      y: point.y
+    });
     open = true;
   }
-  return commands.join(" ");
+  return commands;
+}
+
+function commandsToPathData(commands = []) {
+  return commands.map((command) => {
+    if (!command || typeof command !== "object") return "";
+    if (command.op === "moveTo") return `M ${formatNumber(command.x)} ${formatNumber(command.y)}`;
+    if (command.op === "lineTo") return `L ${formatNumber(command.x)} ${formatNumber(command.y)}`;
+    if (command.op === "quadraticTo") {
+      return `Q ${formatNumber(command.x1)} ${formatNumber(command.y1)} ${formatNumber(command.x)} ${formatNumber(command.y)}`;
+    }
+    if (command.op === "cubicTo") {
+      return `C ${formatNumber(command.x1)} ${formatNumber(command.y1)} ${formatNumber(command.x2)} ${formatNumber(command.y2)} ${formatNumber(command.x)} ${formatNumber(command.y)}`;
+    }
+    if (command.op === "closePath") return "Z";
+    return "";
+  }).filter(Boolean).join(" ");
+}
+
+function parsePathCommands(data) {
+  if (typeof data !== "string" || data.trim() === "") return [];
+  const commands = [];
+  const parts = data.match(/[MLQCZmlqcz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
+  let index = 0;
+  let op = null;
+  while (index < parts.length) {
+    const token = parts[index];
+    if (/^[MLQCZ]$/i.test(token)) {
+      op = token.toUpperCase();
+      index += 1;
+      if (op === "Z") {
+        commands.push({ op: "closePath" });
+        op = null;
+      }
+      continue;
+    }
+    if (op === "M" || op === "L") {
+      const x = Number(parts[index]);
+      const y = Number(parts[index + 1]);
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        commands.push({ op: op === "M" ? "moveTo" : "lineTo", x, y });
+      }
+      index += 2;
+      continue;
+    }
+    if (op === "Q") {
+      const x1 = Number(parts[index]);
+      const y1 = Number(parts[index + 1]);
+      const x = Number(parts[index + 2]);
+      const y = Number(parts[index + 3]);
+      if ([x1, y1, x, y].every(Number.isFinite)) {
+        commands.push({ op: "quadraticTo", x1, y1, x, y });
+      }
+      index += 4;
+      continue;
+    }
+    if (op === "C") {
+      const x1 = Number(parts[index]);
+      const y1 = Number(parts[index + 1]);
+      const x2 = Number(parts[index + 2]);
+      const y2 = Number(parts[index + 3]);
+      const x = Number(parts[index + 4]);
+      const y = Number(parts[index + 5]);
+      if ([x1, y1, x2, y2, x, y].every(Number.isFinite)) {
+        commands.push({ op: "cubicTo", x1, y1, x2, y2, x, y });
+      }
+      index += 6;
+      continue;
+    }
+    index += 1;
+  }
+  return commands;
+}
+
+function translateTransform(x, y) {
+  return { type: "translate", x, y };
+}
+
+function rotateTransform(angle, cx, cy) {
+  return { type: "rotate", angle, cx, cy };
+}
+
+function transformsToSvgTransform(value) {
+  const transforms = Array.isArray(value) ? value : [value];
+  return transforms.map(transformToSvgTransform).filter(Boolean).join(" ");
+}
+
+function transformToSvgTransform(transform) {
+  if (!transform || typeof transform !== "object") return "";
+  if (transform.type === "translate") return `translate(${formatNumber(transform.x)} ${formatNumber(transform.y)})`;
+  if (transform.type === "rotate") {
+    const base = `rotate(${formatNumber(transform.angle)}`;
+    return transform.cx == null || transform.cy == null
+      ? `${base})`
+      : `${base} ${formatNumber(transform.cx)} ${formatNumber(transform.cy)})`;
+  }
+  if (transform.type === "matrix") {
+    return `matrix(${formatNumber(transform.a)} ${formatNumber(transform.b)} ${formatNumber(transform.c)} ${formatNumber(transform.d)} ${formatNumber(transform.e)} ${formatNumber(transform.f)})`;
+  }
+  return "";
+}
+
+function formatNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Number(number.toFixed(6)) : 0;
 }
 
 function parseFmt(fmt) {
@@ -1063,7 +1206,15 @@ function displayPropsToSvgAttrs(context, props = {}) {
   const attrs = {};
   for (const [key, value] of Object.entries(props)) {
     if (value == null || value === false || key === "headArrow" || key === "tailArrow" || key === "arrowSize") continue;
-    attrs[displayPropSvgName(key)] = value;
+    if (key === "commands") {
+      attrs.d = commandsToPathData(value);
+    } else if (key === "transform") {
+      attrs.transform = transformsToSvgTransform(value);
+    } else if (key === "clip") {
+      attrs["clip-path"] = `url(#${value.id})`;
+    } else {
+      attrs[displayPropSvgName(key)] = value;
+    }
   }
   if (props.tailArrow || props.headArrow) {
     const key = arrowMarkerKey(arrowSize(props));
@@ -1146,7 +1297,7 @@ function renderMathItem(context, item) {
       y: item.y,
       textAnchor: item.anchor,
       ...(item.baseline ? { dominantBaseline: item.baseline } : {}),
-      ...(item.rotate ? { transform: `rotate(${item.rotate} ${item.x} ${item.y})` } : {})
+      ...(item.rotate ? { transform: [rotateTransform(item.rotate, item.x, item.y)] } : {})
     }, item.fallback));
   }
 

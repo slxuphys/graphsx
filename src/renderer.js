@@ -117,7 +117,7 @@ function shapeDisplayItem(node, offsetX, offsetY) {
     return null;
   }
 
-  const transform = node.transform ? viewportMatrixAttr(node.transform, offsetX, offsetY) : null;
+  const transform = node.transform ? [viewportMatrixTransform(node.transform, offsetX, offsetY)] : null;
   if (node.shape === "plot") {
     const width = Number(node.attrs.width ?? node.attrs.w ?? 720);
     const height = Number(node.attrs.height ?? node.attrs.h ?? 420);
@@ -254,7 +254,7 @@ function edgeDisplayItem(context, edge, from, to, offsetX, offsetY) {
       stroke: "#2d6cdf",
       strokeWidth: 2.5,
       ...arrowDisplayProps(context, edge.attrs),
-      path: edgePathData(edge, from, to, offsetX, offsetY, context)
+      commands: edgePathCommands(edge, from, to, offsetX, offsetY, context)
     },
     style: edge.attrs.style
   };
@@ -267,13 +267,13 @@ function pathDisplayItem(context, path, offsetX, offsetY) {
     stroke: "#111111",
     strokeWidth: 2,
     ...arrowDisplayProps(context, path.attrs),
-    path: explicitPathData(path, offsetX, offsetY)
+    commands: explicitPathCommands(path, offsetX, offsetY)
   };
   if (!Array.isArray(path.points)) {
     if (path.transform) {
-      attrs.transform = `${viewportMatrixAttr(path.transform, offsetX, offsetY)} translate(${path.x ?? 0} ${path.y ?? 0})`;
+      attrs.transform = [viewportMatrixTransform(path.transform, offsetX, offsetY), translateTransform(path.x ?? 0, path.y ?? 0)];
     } else if (path.x || path.y) {
-      attrs.transform = `translate(${path.x + offsetX} ${path.y + offsetY})`;
+      attrs.transform = [translateTransform(path.x + offsetX, path.y + offsetY)];
     }
   }
   return {
@@ -357,25 +357,41 @@ export function flattenPaths(graph) {
 }
 
 export function edgePathData(edge, from, to, offsetX = 0, offsetY = 0, routingContext = null) {
+  return commandsToPathData(edgePathCommands(edge, from, to, offsetX, offsetY, routingContext));
+}
+
+function edgePathCommands(edge, from, to, offsetX = 0, offsetY = 0, routingContext = null) {
   const route = edge.attrs.route ?? "curve";
   if (route === "straight") {
-    return routedPathData(edge, straightPoints(edge, from, to, offsetX, offsetY));
+    return routedPathCommands(edge, straightPoints(edge, from, to, offsetX, offsetY));
   }
   if (route === "orthogonal") {
-    return routedPathData(edge, orthogonalPoints(edge, from, to, offsetX, offsetY));
+    return routedPathCommands(edge, orthogonalPoints(edge, from, to, offsetX, offsetY));
   }
   if (route === "bypass") {
-    return routedPathData(edge, bypassPoints(edge, from, to, offsetX, offsetY));
+    return routedPathCommands(edge, bypassPoints(edge, from, to, offsetX, offsetY));
   }
   if (route === "auto") {
-    return routedPathData(edge, autoRoutePoints(edge, from, to, offsetX, offsetY, routingContext));
+    return routedPathCommands(edge, autoRoutePoints(edge, from, to, offsetX, offsetY, routingContext));
   }
 
   const distance = Math.hypot(to.x - from.x, to.y - from.y);
   const handle = Math.max(48, distance * 0.35);
   const fromDir = angleVector(from.angle ?? 0);
   const toDir = angleVector(to.angle ?? 180);
-  return `M ${from.x + offsetX} ${from.y + offsetY} C ${from.x + offsetX + fromDir.x * handle} ${from.y + offsetY + fromDir.y * handle}, ${to.x + offsetX + toDir.x * handle} ${to.y + offsetY + toDir.y * handle}, ${to.x + offsetX} ${to.y + offsetY}`;
+  return [{
+    op: "moveTo",
+    x: from.x + offsetX,
+    y: from.y + offsetY
+  }, {
+    op: "cubicTo",
+    x1: from.x + offsetX + fromDir.x * handle,
+    y1: from.y + offsetY + fromDir.y * handle,
+    x2: to.x + offsetX + toDir.x * handle,
+    y2: to.y + offsetY + toDir.y * handle,
+    x: to.x + offsetX,
+    y: to.y + offsetY
+  }];
 }
 
 function straightPoints(edge, from, to, offsetX, offsetY) {
@@ -563,24 +579,28 @@ function drawPath(context, path, offsetX, offsetY) {
   };
   if (!Array.isArray(path.points)) {
     if (path.transform) {
-      attrs.transform = `${viewportMatrixAttr(path.transform, offsetX, offsetY)} translate(${path.x ?? 0} ${path.y ?? 0})`;
+      attrs.transform = transformsToSvgTransform([viewportMatrixTransform(path.transform, offsetX, offsetY), translateTransform(path.x ?? 0, path.y ?? 0)]);
     } else if (path.x || path.y) {
-      attrs.transform = `translate(${path.x + offsetX} ${path.y + offsetY})`;
+      attrs.transform = transformsToSvgTransform([translateTransform(path.x + offsetX, path.y + offsetY)]);
     }
   }
   return styledEl(context, "path", path.attrs.style, attrs);
 }
 
 function explicitPathData(path, offsetX, offsetY) {
+  return commandsToPathData(explicitPathCommands(path, offsetX, offsetY));
+}
+
+function explicitPathCommands(path, offsetX, offsetY) {
   if (Array.isArray(path.points)) {
     const points = path.points.map((point) => ({
       x: point.x + offsetX,
       y: point.y + offsetY
     }));
-    const data = routedPathData(path, compactPoints(points));
-    return booleanAttr(path.attrs.closed, false) ? `${data} Z` : data;
+    const commands = routedPathCommands(path, compactPoints(points));
+    return booleanAttr(path.attrs.closed, false) ? [...commands, { op: "closePath" }] : commands;
   }
-  return path.attrs.d ?? "";
+  return parsePathCommands(path.attrs.d ?? "");
 }
 
 function arrowMarkerAttrs(context, attrs) {
@@ -960,25 +980,39 @@ function isEndpointNode(nodeId, endpointId) {
 }
 
 function pathData(points) {
-  return points.map((point, index) => {
-    return `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`;
-  }).join(" ");
+  return commandsToPathData(pathCommands(points));
 }
 
 function routedPathData(edge, points) {
+  return commandsToPathData(routedPathCommands(edge, points));
+}
+
+function pathCommands(points) {
+  return points.map((point, index) => ({
+    op: index === 0 ? "moveTo" : "lineTo",
+    x: point.x,
+    y: point.y
+  }));
+}
+
+function routedPathCommands(edge, points) {
   const corner = Number(edge.attrs.corner ?? 0);
   if (corner <= 0) {
-    return pathData(points);
+    return pathCommands(points);
   }
-  return roundedPathData(points, corner);
+  return roundedPathCommands(points, corner);
 }
 
 function roundedPathData(points, radius) {
+  return commandsToPathData(roundedPathCommands(points, radius));
+}
+
+function roundedPathCommands(points, radius) {
   if (points.length <= 2) {
-    return pathData(points);
+    return pathCommands(points);
   }
 
-  const commands = [`M ${points[0].x} ${points[0].y}`];
+  const commands = [{ op: "moveTo", x: points[0].x, y: points[0].y }];
   for (let index = 1; index < points.length - 1; index += 1) {
     const previous = points[index - 1];
     const point = points[index];
@@ -988,18 +1022,89 @@ function roundedPathData(points, radius) {
     const amount = Math.min(radius, inLength / 2, outLength / 2);
 
     if (amount <= 0 || isCollinear(previous, point, next)) {
-      commands.push(`L ${point.x} ${point.y}`);
+      commands.push({ op: "lineTo", x: point.x, y: point.y });
       continue;
     }
 
     const before = moveToward(point, previous, amount);
     const after = moveToward(point, next, amount);
-    commands.push(`L ${before.x} ${before.y}`);
-    commands.push(`Q ${point.x} ${point.y} ${after.x} ${after.y}`);
+    commands.push({ op: "lineTo", x: before.x, y: before.y });
+    commands.push({ op: "quadraticTo", x1: point.x, y1: point.y, x: after.x, y: after.y });
   }
   const last = points[points.length - 1];
-  commands.push(`L ${last.x} ${last.y}`);
-  return commands.join(" ");
+  commands.push({ op: "lineTo", x: last.x, y: last.y });
+  return commands;
+}
+
+function commandsToPathData(commands = []) {
+  return commands.map((command) => {
+    if (!command || typeof command !== "object") return "";
+    if (command.op === "moveTo") return `M ${formatNumber(command.x)} ${formatNumber(command.y)}`;
+    if (command.op === "lineTo") return `L ${formatNumber(command.x)} ${formatNumber(command.y)}`;
+    if (command.op === "quadraticTo") {
+      return `Q ${formatNumber(command.x1)} ${formatNumber(command.y1)} ${formatNumber(command.x)} ${formatNumber(command.y)}`;
+    }
+    if (command.op === "cubicTo") {
+      return `C ${formatNumber(command.x1)} ${formatNumber(command.y1)} ${formatNumber(command.x2)} ${formatNumber(command.y2)} ${formatNumber(command.x)} ${formatNumber(command.y)}`;
+    }
+    if (command.op === "closePath") return "Z";
+    return "";
+  }).filter(Boolean).join(" ");
+}
+
+function parsePathCommands(data) {
+  if (typeof data !== "string" || data.trim() === "") return [];
+  const commands = [];
+  const parts = data.match(/[MLQCZmlqcz]|-?\d*\.?\d+(?:e[-+]?\d+)?/gi) ?? [];
+  let index = 0;
+  let op = null;
+  while (index < parts.length) {
+    const token = parts[index];
+    if (/^[MLQCZ]$/i.test(token)) {
+      op = token.toUpperCase();
+      index += 1;
+      if (op === "Z") {
+        commands.push({ op: "closePath" });
+        op = null;
+      }
+      continue;
+    }
+    if (op === "M" || op === "L") {
+      const x = Number(parts[index]);
+      const y = Number(parts[index + 1]);
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        commands.push({ op: op === "M" ? "moveTo" : "lineTo", x, y });
+      }
+      index += 2;
+      continue;
+    }
+    if (op === "Q") {
+      const x1 = Number(parts[index]);
+      const y1 = Number(parts[index + 1]);
+      const x = Number(parts[index + 2]);
+      const y = Number(parts[index + 3]);
+      if ([x1, y1, x, y].every(Number.isFinite)) {
+        commands.push({ op: "quadraticTo", x1, y1, x, y });
+      }
+      index += 4;
+      continue;
+    }
+    if (op === "C") {
+      const x1 = Number(parts[index]);
+      const y1 = Number(parts[index + 1]);
+      const x2 = Number(parts[index + 2]);
+      const y2 = Number(parts[index + 3]);
+      const x = Number(parts[index + 4]);
+      const y = Number(parts[index + 5]);
+      if ([x1, y1, x2, y2, x, y].every(Number.isFinite)) {
+        commands.push({ op: "cubicTo", x1, y1, x2, y2, x, y });
+      }
+      index += 6;
+      continue;
+    }
+    index += 1;
+  }
+  return commands;
 }
 
 function distance(a, b) {
@@ -1212,16 +1317,45 @@ function pathBoundsPoints(path) {
 }
 
 function viewportMatrixAttr(matrix, offsetX, offsetY) {
-  const adjusted = {
-    ...matrix,
-    e: matrix.e + offsetX,
-    f: matrix.f + offsetY
-  };
-  return matrixAttr(adjusted);
+  return transformToSvgTransform(viewportMatrixTransform(matrix, offsetX, offsetY));
 }
 
 function matrixAttr(matrix) {
   return `matrix(${formatNumber(matrix.a)} ${formatNumber(matrix.b)} ${formatNumber(matrix.c)} ${formatNumber(matrix.d)} ${formatNumber(matrix.e)} ${formatNumber(matrix.f)})`;
+}
+
+function viewportMatrixTransform(matrix, offsetX, offsetY) {
+  return {
+    type: "matrix",
+    a: matrix.a,
+    b: matrix.b,
+    c: matrix.c,
+    d: matrix.d,
+    e: matrix.e + offsetX,
+    f: matrix.f + offsetY
+  };
+}
+
+function translateTransform(x, y) {
+  return { type: "translate", x, y };
+}
+
+function transformsToSvgTransform(value) {
+  const transforms = Array.isArray(value) ? value : [value];
+  return transforms.map(transformToSvgTransform).filter(Boolean).join(" ");
+}
+
+function transformToSvgTransform(transform) {
+  if (!transform || typeof transform !== "object") return "";
+  if (transform.type === "matrix") return matrixAttr(transform);
+  if (transform.type === "translate") return `translate(${formatNumber(transform.x)} ${formatNumber(transform.y)})`;
+  if (transform.type === "rotate") {
+    const base = `rotate(${formatNumber(transform.angle)}`;
+    return transform.cx == null || transform.cy == null
+      ? `${base})`
+      : `${base} ${formatNumber(transform.cx)} ${formatNumber(transform.cy)})`;
+  }
+  return "";
 }
 
 function transformPoint(matrix, point) {
@@ -1269,7 +1403,13 @@ function displayPropsToSvgAttrs(context, props = {}) {
   const attrs = {};
   for (const [key, value] of Object.entries(props)) {
     if (value == null || value === false || key === "headArrow" || key === "tailArrow" || key === "arrowSize") continue;
-    attrs[displayPropSvgName(key)] = value;
+    if (key === "commands") {
+      attrs.d = commandsToPathData(value);
+    } else if (key === "transform") {
+      attrs.transform = transformsToSvgTransform(value);
+    } else {
+      attrs[displayPropSvgName(key)] = value;
+    }
   }
   if (props.tailArrow || props.headArrow) {
     const markerKey = arrowMarkerKey(arrowSize(props));

@@ -558,7 +558,12 @@ test("builds a graph display list before SVG rendering", () => {
 
   assert.equal(display.type, "graph");
   assert.equal(edge.type, "path");
-  assert.equal(edge.props.path, "M 100 30 L 100 40 L 200 40 L 200 30");
+  assert.deepEqual(edge.props.commands, [
+    { op: "moveTo", x: 100, y: 30 },
+    { op: "lineTo", x: 100, y: 40 },
+    { op: "lineTo", x: 200, y: 40 },
+    { op: "lineTo", x: 200, y: 30 }
+  ]);
   assert.equal(math.source, "\\alpha");
   assert.equal(math.fontSize, 13);
   assert.equal(text.x, 250);
