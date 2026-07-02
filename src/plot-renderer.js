@@ -64,6 +64,7 @@ export function buildPlotDisplayList(plot, options = {}) {
     yDomain: context.yDomain,
     padding,
     clipId,
+    arrowMarkerPrefix: context.arrowMarkerPrefix,
     items: [defs, frameLayer, axisLayer, dataLayer, annotationLayer, labelLayer, legendLayer]
   };
 }
@@ -72,7 +73,8 @@ export function renderPlotDisplayListToSvg(svg, displayList, options = {}) {
   const documentRef = options.document ?? svg.ownerDocument ?? document;
   const context = {
     document: documentRef,
-    katex: options.katex ?? null
+    katex: options.katex ?? null,
+    arrowMarkerPrefix: displayList.arrowMarkerPrefix
   };
 
   svg.setAttribute("viewBox", `0 0 ${displayList.width} ${displayList.height}`);
@@ -610,7 +612,7 @@ function drawAnnotationLink(context, link, from, to) {
     fill: "none",
     stroke: "#111111",
     strokeWidth: 1.5,
-    ...arrowMarkerAttrs(context, link.attrs),
+    ...annotationArrowDisplayProps(link.attrs),
     d: `M ${from.x} ${from.y} L ${to.x} ${to.y}`
   });
 }
@@ -621,7 +623,7 @@ function drawAnnotationPath(context, path) {
     fill: "none",
     stroke: "#111111",
     strokeWidth: 1.5,
-    ...arrowMarkerAttrs(context, path.attrs),
+    ...annotationArrowDisplayProps(path.attrs),
     d: annotationPathData(context, path)
   };
   return styledEl(context, "path", path.attrs.style, attrs);
@@ -811,18 +813,19 @@ function estimateTextWidth(value, fontSize) {
 function drawPlotLabel(context, value, x, y, className, anchor = "middle", style = null, rotate = 0, baseline = null) {
   const label = String(value);
   const math = parseMathLabel(label);
+  const fontSize = labelFontSize(style);
   if (math) {
-    return drawMathLabel(context, math, x, y, className, anchor, rotate, baseline);
+    return drawMathLabel(context, math, x, y, className, anchor, rotate, baseline, style, fontSize);
   }
 
   return drawPlainLabel(context, math ?? label, x, y, className, anchor, style, rotate, baseline);
 }
 
-function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, baseline = null) {
-  const width = estimateMathWidth(source);
-  const height = MATH_LABEL_HEIGHT;
+function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, baseline = null, style = null, fontSize = 12) {
+  const width = estimateMathWidth(source, fontSize);
+  const height = mathLabelHeight(fontSize);
   const left = anchor === "middle" ? x - width / 2 : anchor === "end" ? x - width : x;
-  const top = baseline === "hanging" ? y - MATH_HANGING_INSET : y - height / 2;
+  const top = baseline === "hanging" ? y - mathHangingInset(fontSize) : y - height / 2;
   return {
     type: "math",
     source,
@@ -837,8 +840,10 @@ function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, bas
     anchor,
     rotate,
     baseline,
-    attrs: {
-      class: className,
+    fontSize,
+    style,
+    props: {
+      className,
       x: left,
       y: top,
       width,
@@ -856,8 +861,28 @@ function parseMathLabel(label) {
   return null;
 }
 
-function estimateMathWidth(source) {
-  return Math.max(34, Math.min(220, source.length * 12 + 28));
+function labelFontSize(style) {
+  if (!style || typeof style !== "object") return 12;
+  const raw = style.fontSize ?? style.fontsize;
+  if (raw == null) return 12;
+  const parsed = Number.parseFloat(raw);
+  return Number.isFinite(parsed) ? raw : 12;
+}
+
+function estimateMathWidth(source, fontSize = 12) {
+  const size = Number.parseFloat(fontSize);
+  const scale = Number.isFinite(size) ? size / 12 : 1;
+  return Math.max(34, Math.min(260, source.length * 12 * scale + 28));
+}
+
+function mathLabelHeight(fontSize = 12) {
+  const size = Number.parseFloat(fontSize);
+  return Number.isFinite(size) ? Math.max(24, size * 2.1) : MATH_LABEL_HEIGHT;
+}
+
+function mathHangingInset(fontSize = 12) {
+  const size = Number.parseFloat(fontSize);
+  return Number.isFinite(size) ? Math.max(6, size * 0.66) : MATH_HANGING_INSET;
 }
 
 function plotBounds(plot) {
@@ -995,7 +1020,7 @@ function styledEl(context, tag, style, attrs, text = null) {
 
 function styleAttrs(style) {
   if (!style || typeof style !== "object") return {};
-  return Object.fromEntries(Object.entries(style).map(([key, value]) => [svgAttrName(key), value]));
+  return Object.fromEntries(Object.entries(style).map(([key, value]) => [displayPropName(key), value]));
 }
 
 function lineStyle(style) {
@@ -1008,17 +1033,75 @@ function linkStyle(style) {
   return lineStyle(style);
 }
 
-function svgAttrName(key) {
-  const rawSvgAttrs = new Set(["markerWidth", "markerHeight", "refX", "refY", "markerUnits"]);
-  if (rawSvgAttrs.has(key)) return key;
-  return key.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`);
+function displayPropName(key) {
+  const names = {
+    class: "className",
+    d: "path",
+    "clip-path": "clipPath",
+    "stroke-width": "strokeWidth",
+    "stroke-dasharray": "strokeDasharray",
+    "stroke-linecap": "strokeLinecap",
+    "stroke-linejoin": "strokeLinejoin",
+    "fill-opacity": "fillOpacity",
+    "text-anchor": "textAnchor",
+    "dominant-baseline": "dominantBaseline",
+    "marker-start": "markerStart",
+    "marker-end": "markerEnd"
+  };
+  return names[key] ?? key;
+}
+
+function annotationArrowDisplayProps(attrs) {
+  const size = arrowSize(attrs);
+  return {
+    ...(booleanAttr(attrs.tailArrow ?? attrs.tailarrow, false) ? { tailArrow: true, arrowSize: size } : {}),
+    ...(booleanAttr(attrs.headArrow ?? attrs.headarrow, false) ? { headArrow: true, arrowSize: size } : {})
+  };
+}
+
+function displayPropsToSvgAttrs(context, props = {}) {
+  const attrs = {};
+  for (const [key, value] of Object.entries(props)) {
+    if (value == null || value === false || key === "headArrow" || key === "tailArrow" || key === "arrowSize") continue;
+    attrs[displayPropSvgName(key)] = value;
+  }
+  if (props.tailArrow || props.headArrow) {
+    const key = arrowMarkerKey(arrowSize(props));
+    if (props.tailArrow) attrs["marker-start"] = `url(#${arrowMarkerId(context, "tail", key)})`;
+    if (props.headArrow) attrs["marker-end"] = `url(#${arrowMarkerId(context, "head", key)})`;
+  }
+  return attrs;
+}
+
+function displayPropSvgName(key) {
+  const names = {
+    className: "class",
+    path: "d",
+    clipPath: "clip-path",
+    strokeWidth: "stroke-width",
+    strokeDasharray: "stroke-dasharray",
+    strokeLinecap: "stroke-linecap",
+    strokeLinejoin: "stroke-linejoin",
+    fillOpacity: "fill-opacity",
+    textAnchor: "text-anchor",
+    dominantBaseline: "dominant-baseline",
+    markerStart: "marker-start",
+    markerEnd: "marker-end",
+    markerWidth: "markerWidth",
+    markerHeight: "markerHeight",
+    markerUnits: "markerUnits",
+    refX: "refX",
+    refY: "refY",
+    viewBox: "viewBox"
+  };
+  return names[key] ?? key.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`);
 }
 
 function el(context, tag, attrs = {}, text = null) {
   return {
     type: "element",
     tag,
-    attrs: cleanAttrs(attrs),
+    props: cleanProps(attrs),
     text,
     children: [],
     append(...children) {
@@ -1027,11 +1110,11 @@ function el(context, tag, attrs = {}, text = null) {
   };
 }
 
-function cleanAttrs(attrs) {
+function cleanProps(attrs) {
   const clean = {};
   for (const [key, value] of Object.entries(attrs)) {
     if (value == null || value === false) continue;
-    clean[svgAttrName(key)] = value;
+    clean[displayPropName(key)] = value;
   }
   return clean;
 }
@@ -1042,7 +1125,7 @@ function renderDisplayItem(context, item) {
   if (item.type !== "element") return null;
 
   const node = context.document.createElementNS(SVG_NS, item.tag);
-  for (const [key, value] of Object.entries(item.attrs ?? {})) {
+  for (const [key, value] of Object.entries(displayPropsToSvgAttrs(context, item.props))) {
     node.setAttribute(key, String(value));
   }
   if (item.text != null) node.textContent = item.text;
@@ -1067,7 +1150,7 @@ function renderMathItem(context, item) {
     }, item.fallback));
   }
 
-  const foreignObject = renderDisplayItem(context, el(context, "foreignObject", item.attrs));
+  const foreignObject = renderDisplayItem(context, el(context, "foreignObject", item.props));
   const host = context.document.createElement("div");
   host.style.width = `${item.width}px`;
   host.style.height = `${item.height}px`;
@@ -1075,9 +1158,19 @@ function renderMathItem(context, item) {
   host.style.alignItems = "center";
   host.style.justifyContent = item.anchor === "middle" ? "center" : item.anchor === "end" ? "flex-end" : "flex-start";
   host.style.color = "#1e2724";
+  if (item.fontSize != null) host.style.fontSize = cssSize(item.fontSize);
+  if (item.style && typeof item.style === "object") {
+    for (const [key, value] of Object.entries(item.style)) {
+      host.style[key] = key === "fontSize" || key === "fontsize" ? cssSize(value) : String(value);
+    }
+  }
   context.katex.render(item.source, host, { throwOnError: false });
   foreignObject.append(host);
   return foreignObject;
+}
+
+function cssSize(value) {
+  return typeof value === "number" ? `${value}px` : String(value);
 }
 
 function appendMaybe(parent, child) {

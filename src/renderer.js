@@ -125,8 +125,8 @@ function shapeDisplayItem(node, offsetX, offsetY) {
       layer: "node",
       type: "plot",
       displayList: buildPlotDisplayList(node.plot, { minWidth: width, minHeight: height }),
-      attrs: {
-        class: "plot-node",
+      props: {
+        className: "plot-node",
         x: node.transform ? node.x : node.x + offsetX,
         y: node.transform ? node.y : node.y + offsetY,
         width,
@@ -142,14 +142,14 @@ function shapeDisplayItem(node, offsetX, offsetY) {
     return {
       layer: "node",
       type: "circle",
-      attrs: {
-        class: "shape",
+      props: {
+        className: "shape",
         cx: node.transform ? node.x : node.x + offsetX,
         cy: node.transform ? node.y : node.y + offsetY,
         r: Number(node.attrs.r ?? 28),
         fill: "#ffffff",
         stroke: "#26312d",
-        "stroke-width": 2,
+        strokeWidth: 2,
         ...(transform ? { transform } : {})
       },
       style: node.attrs.style
@@ -159,8 +159,8 @@ function shapeDisplayItem(node, offsetX, offsetY) {
   return {
     layer: "node",
     type: "rect",
-    attrs: {
-      class: "shape",
+    props: {
+      className: "shape",
       x: node.transform ? node.x : node.x + offsetX,
       y: node.transform ? node.y : node.y + offsetY,
       width: Number(node.attrs.w ?? 100),
@@ -168,7 +168,7 @@ function shapeDisplayItem(node, offsetX, offsetY) {
       rx: Number(node.attrs.corner ?? node.attrs.rx ?? 6),
       fill: "#ffffff",
       stroke: "#26312d",
-      "stroke-width": 2,
+      strokeWidth: 2,
       ...(transform ? { transform } : {})
     },
     style: node.attrs.style
@@ -182,8 +182,8 @@ function groupBoxDisplayItems(context, node, offsetX, offsetY) {
   const items = [{
     layer: "node",
     type: "rect",
-    attrs: {
-      class: "group-box",
+    props: {
+      className: "group-box",
       x: bounds.minX + offsetX - padding,
       y: bounds.minY + offsetY - padding,
       width: Math.max(80, bounds.maxX - bounds.minX + padding * 2),
@@ -191,7 +191,7 @@ function groupBoxDisplayItems(context, node, offsetX, offsetY) {
       rx: 8,
       fill: "rgba(45, 108, 223, 0.05)",
       stroke: "rgba(45, 108, 223, 0.45)",
-      "stroke-dasharray": "6 5"
+      strokeDasharray: "6 5"
     }
   }];
   appendItem(items, nodeLabelDisplayItem(node, offsetX, offsetY, {
@@ -208,7 +208,7 @@ function nodeLabelDisplayItem(node, offsetX, offsetY, position = null) {
   const box = nodeBox(node);
   const x = position?.x ?? box.cx;
   const y = position?.y ?? box.cy;
-  return labelDisplayItem(node.attrs.label, x + offsetX, y + offsetY, "node-label");
+  return labelDisplayItem(node.attrs.label, x + offsetX, y + offsetY, "node-label", "middle", node.attrs);
 }
 
 function legDisplayItems(leg, offsetX, offsetY) {
@@ -218,42 +218,43 @@ function legDisplayItems(leg, offsetX, offsetY) {
   const items = [{
     layer: "node",
     type: "circle",
-    attrs: {
-      class: "leg-dot",
+    props: {
+      className: "leg-dot",
       cx: leg.x + offsetX,
       cy: leg.y + offsetY,
       r: Number(leg.attrs.r ?? 5),
       fill: "#16846f",
       stroke: "#ffffff",
-      "stroke-width": 2
+      strokeWidth: 2
     },
     style: leg.attrs.style
   }];
   if (leg.attrs.label != null) {
-    items.push(labelDisplayItem(leg.attrs.label, leg.x + offsetX + 10, leg.y + offsetY - 10, "leg-label", "start"));
+    items.push(labelDisplayItem(leg.attrs.label, leg.x + offsetX + 10, leg.y + offsetY - 10, "leg-label", "start", leg.attrs));
   }
   return items;
 }
 
-function labelDisplayItem(value, x, y, className, anchor = "middle") {
+function labelDisplayItem(value, x, y, className, anchor = "middle", attrs = {}) {
   const label = String(value);
   const math = parseMathLabel(label);
+  const labelStyle = labelStyleProps(attrs, className);
   return math
-    ? { layer: "node", type: "math", source: math, x, y, className, anchor }
-    : { layer: "node", type: "text", text: label, x, y, className, anchor };
+    ? { layer: "node", type: "math", source: math, x, y, className, anchor, ...labelStyle }
+    : { layer: "node", type: "text", text: label, x, y, className, anchor, ...labelStyle };
 }
 
 function edgeDisplayItem(context, edge, from, to, offsetX, offsetY) {
   return {
     layer: "edge",
     type: "path",
-    attrs: {
-      class: "edge",
+    props: {
+      className: "edge",
       fill: "none",
       stroke: "#2d6cdf",
-      "stroke-width": 2.5,
-      ...arrowMarkerAttrs(context, edge.attrs),
-      d: edgePathData(edge, from, to, offsetX, offsetY, context)
+      strokeWidth: 2.5,
+      ...arrowDisplayProps(context, edge.attrs),
+      path: edgePathData(edge, from, to, offsetX, offsetY, context)
     },
     style: edge.attrs.style
   };
@@ -261,12 +262,12 @@ function edgeDisplayItem(context, edge, from, to, offsetX, offsetY) {
 
 function pathDisplayItem(context, path, offsetX, offsetY) {
   const attrs = {
-    class: "path",
+    className: "path",
     fill: "none",
     stroke: "#111111",
-    "stroke-width": 2,
-    ...arrowMarkerAttrs(context, path.attrs),
-    d: explicitPathData(path, offsetX, offsetY)
+    strokeWidth: 2,
+    ...arrowDisplayProps(context, path.attrs),
+    path: explicitPathData(path, offsetX, offsetY)
   };
   if (!Array.isArray(path.points)) {
     if (path.transform) {
@@ -278,14 +279,14 @@ function pathDisplayItem(context, path, offsetX, offsetY) {
   return {
     layer: "path",
     type: "path",
-    attrs,
+    props: attrs,
     style: path.attrs.style
   };
 }
 
 function renderDisplayItem(context, item) {
   if (item.type === "plot") {
-    const plotSvg = styledEl(context, "svg", item.style, item.attrs);
+    const plotSvg = styledEl(context, "svg", item.style, displayPropsToSvgAttrs(context, item.props));
     renderPlotDisplayListToSvg(plotSvg, item.displayList, {
       document: context.document,
       katex: context.katex
@@ -293,25 +294,26 @@ function renderDisplayItem(context, item) {
     return plotSvg;
   }
   if (item.type === "rect" || item.type === "circle" || item.type === "path") {
-    return styledEl(context, item.type, item.style, item.attrs);
+    return styledEl(context, item.type, item.style, displayPropsToSvgAttrs(context, item.props));
   }
   if (item.type === "math") {
     return context.katex
-      ? drawMathLabel(context, item.source, item.x, item.y, item.className, item.anchor)
-      : drawPlainDisplayText(context, item.source, item.x, item.y, item.className, item.anchor);
+      ? drawMathLabel(context, item.source, item.x, item.y, item.className, item.anchor, item.fontSize, item.style)
+      : drawPlainDisplayText(context, item.source, item.x, item.y, item.className, item.anchor, item.fontSize, item.style);
   }
   if (item.type === "text") {
-    return drawPlainDisplayText(context, item.text, item.x, item.y, item.className, item.anchor);
+    return drawPlainDisplayText(context, item.text, item.x, item.y, item.className, item.anchor, item.fontSize, item.style);
   }
   return null;
 }
 
-function drawPlainDisplayText(context, text, x, y, className, anchor = "middle") {
-  return el(context, "text", {
+function drawPlainDisplayText(context, text, x, y, className, anchor = "middle", fontSize = null, style = null) {
+  return styledEl(context, "text", style, {
     class: className,
     x,
     y: y + 4,
-    "text-anchor": anchor
+    "text-anchor": anchor,
+    ...(fontSize != null ? { "font-size": fontSize } : {})
   }, text);
 }
 
@@ -587,6 +589,14 @@ function arrowMarkerAttrs(context, attrs) {
   return {
     ...(booleanAttr(attrs.tailArrow ?? attrs.tailarrow, false) ? { "marker-start": `url(#${arrowMarkerId("tail", markerKey)})` } : {}),
     ...(booleanAttr(attrs.headArrow ?? attrs.headarrow, false) ? { "marker-end": `url(#${arrowMarkerId("head", markerKey)})` } : {})
+  };
+}
+
+function arrowDisplayProps(context, attrs) {
+  const size = arrowSize(attrs);
+  return {
+    ...(booleanAttr(attrs.tailArrow ?? attrs.tailarrow, false) ? { tailArrow: true, arrowSize: size } : {}),
+    ...(booleanAttr(attrs.headArrow ?? attrs.headarrow, false) ? { headArrow: true, arrowSize: size } : {})
   };
 }
 
@@ -1255,6 +1265,60 @@ function styledEl(context, name, style, attrs = {}, text = null) {
   return el(context, name, { ...attrs, ...svgStyleAttrs(style) }, text);
 }
 
+function displayPropsToSvgAttrs(context, props = {}) {
+  const attrs = {};
+  for (const [key, value] of Object.entries(props)) {
+    if (value == null || value === false || key === "headArrow" || key === "tailArrow" || key === "arrowSize") continue;
+    attrs[displayPropSvgName(key)] = value;
+  }
+  if (props.tailArrow || props.headArrow) {
+    const markerKey = arrowMarkerKey(arrowSize(props));
+    if (props.tailArrow) attrs["marker-start"] = `url(#${arrowMarkerId("tail", markerKey)})`;
+    if (props.headArrow) attrs["marker-end"] = `url(#${arrowMarkerId("head", markerKey)})`;
+  }
+  return attrs;
+}
+
+function displayPropSvgName(key) {
+  const names = {
+    className: "class",
+    path: "d",
+    strokeWidth: "stroke-width",
+    strokeDasharray: "stroke-dasharray",
+    strokeLinecap: "stroke-linecap",
+    strokeLinejoin: "stroke-linejoin",
+    fillOpacity: "fill-opacity",
+    textAnchor: "text-anchor",
+    dominantBaseline: "dominant-baseline",
+    markerWidth: "markerWidth",
+    markerHeight: "markerHeight",
+    markerUnits: "markerUnits",
+    refX: "refX",
+    refY: "refY",
+    viewBox: "viewBox"
+  };
+  return names[key] ?? key.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`);
+}
+
+function labelStyleProps(attrs = {}, className = "node-label") {
+  const style = attrs.labelStyle && typeof attrs.labelStyle === "object" ? attrs.labelStyle : null;
+  const fontSize = labelFontSize(attrs, style) ?? defaultLabelFontSize(className);
+  return {
+    ...(fontSize != null ? { fontSize } : {}),
+    ...(style ? { style } : {})
+  };
+}
+
+function labelFontSize(attrs = {}, style = null) {
+  const value = attrs.labelFontSize ?? attrs.labelfontsize ?? attrs.labelSize ?? attrs.labelsize ?? style?.fontSize ?? style?.fontsize;
+  if (value == null) return null;
+  return value;
+}
+
+function defaultLabelFontSize(className) {
+  return className === "leg-label" ? 11 : 13;
+}
+
 function svgStyleAttrs(style) {
   if (!style || typeof style !== "object") {
     return {};
@@ -1281,9 +1345,9 @@ function drawLabel(context, value, x, y, className, anchor = "middle") {
   }, math ?? label);
 }
 
-function drawMathLabel(context, source, x, y, className, anchor) {
-  const width = estimateMathWidth(source);
-  const height = 34;
+function drawMathLabel(context, source, x, y, className, anchor, fontSize = null, style = null) {
+  const width = estimateMathWidth(source, fontSize);
+  const height = Math.max(24, Number(fontSize ?? 16) * 2.125);
   const left = anchor === "middle" ? x - width / 2 : x;
   const foreignObject = el(context, "foreignObject", {
     class: className,
@@ -1299,6 +1363,12 @@ function drawMathLabel(context, source, x, y, className, anchor) {
   host.style.alignItems = "center";
   host.style.justifyContent = anchor === "middle" ? "center" : "flex-start";
   host.style.color = "#1e2724";
+  if (fontSize != null) host.style.fontSize = cssSize(fontSize);
+  if (style && typeof style === "object") {
+    for (const [key, value] of Object.entries(style)) {
+      host.style[key] = key === "fontSize" || key === "fontsize" ? cssSize(value) : String(value);
+    }
+  }
   context.katex.render(source, host, { throwOnError: false });
   foreignObject.append(host);
   return foreignObject;
@@ -1312,8 +1382,14 @@ function parseMathLabel(label) {
   return null;
 }
 
-function estimateMathWidth(source) {
-  return Math.max(34, Math.min(220, source.length * 12 + 28));
+function estimateMathWidth(source, fontSize = null) {
+  const size = Number.parseFloat(fontSize ?? 16);
+  const scale = Number.isFinite(size) ? size / 16 : 1;
+  return Math.max(34, Math.min(260, source.length * 12 * scale + 28));
+}
+
+function cssSize(value) {
+  return typeof value === "number" ? `${value}px` : String(value);
 }
 
 function appendMaybe(parent, child) {

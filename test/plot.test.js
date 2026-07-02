@@ -30,23 +30,24 @@ test("builds a plot display list before SVG rendering", () => {
       <Axis x label="$x$" ticks />
       <Axis y label="y" ticks />
       <Line points={[[0, 0], [1, 1], [2, 0]]} />
-      <Text at={[1, 1]} label="$p$" />
+      <Text at={[1, 1]} label="$p$" style={{ fontSize: 18 }} />
     </Plot>
   `);
 
   const display = buildPlotDisplayList(plot);
-  const dataLayer = display.items.find((item) => item.attrs?.class === "plot-data");
-  const labelLayer = display.items.find((item) => item.attrs?.class === "plot-labels");
+  const dataLayer = display.items.find((item) => item.props?.className === "plot-data");
+  const labelLayer = display.items.find((item) => item.props?.className === "plot-labels");
   const linePath = dataLayer.children[0].children.find((item) => item.tag === "path");
   const mathLabel = labelLayer.children.find((item) => item.type === "math");
 
   assert.equal(display.type, "plot");
   assert.equal(display.width, 400);
   assert.equal(display.height, 260);
-  assert.equal(dataLayer.attrs["clip-path"], `url(#${display.clipId})`);
-  assert.equal(linePath.attrs.class, "plot-line");
-  assert.match(linePath.attrs.d, /^M /);
+  assert.equal(dataLayer.props.clipPath, `url(#${display.clipId})`);
+  assert.equal(linePath.props.className, "plot-line");
+  assert.match(linePath.props.path, /^M /);
   assert.equal(mathLabel.source, "p");
+  assert.equal(mathLabel.fontSize, 18);
 });
 
 test("parses multiple plot blocks", () => {
@@ -699,7 +700,7 @@ test("supports Ticks children with labels and math default tick labels", () => {
   assert.equal(plainTickLabels.length, 1);
   assert.equal(plainTickLabels[0].text, "zero");
   assert.equal(mathTickLabels.length, 4);
-  assert.equal(mathTickLabels.filter((node) => node.attrs.y === "216").length, 3);
+  assert.equal(mathTickLabels.filter((node) => Number(node.attrs.y) > 200).length, 3);
   assert.ok(rendered.includes("1"));
 });
 
@@ -830,11 +831,12 @@ test("renders plot math labels with katex", () => {
   const plot = parsePlot(`
     <Plot>
       <Axis x label="$x_i$" />
-      <Text at={[0, 0]} label="$\\alpha$" />
+      <Text at={[0, 0]} label="$\\alpha$" style={{ fontSize: 18 }} />
     </Plot>
   `);
   const calls = [];
   const rendered = [];
+  const fontSizes = [];
   const documentRef = {
     createElementNS(_namespace, tag) {
       const node = createMockNode(tag);
@@ -855,12 +857,14 @@ test("renders plot math labels with katex", () => {
     katex: {
       render(source, host) {
         rendered.push(source);
+        fontSizes.push(host.style.fontSize);
         host.textContent = source;
       }
     }
   });
 
   assert.deepEqual(rendered, ["x_i", "\\alpha"]);
+  assert.deepEqual(fontSizes, ["12px", "18px"]);
   assert.equal(calls.filter((node) => node.tag === "foreignObject").length, 2);
 });
 

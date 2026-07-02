@@ -546,7 +546,7 @@ test("builds a graph display list before SVG rendering", () => {
   const graph = parseGraph(`
     <Graph>
       <Rect id="A" at={[0, 0]} size={[100, 60]} label="$\\alpha$" />
-      <Rect id="B" at={[200, 0]} size={[100, 60]} label="B" />
+      <Rect id="B" at={[200, 0]} size={[100, 60]} label="B" labelFontSize={18} />
       <Link from="A.right" to="B.left" route="straight" offset={10} />
     </Graph>
   `);
@@ -558,10 +558,12 @@ test("builds a graph display list before SVG rendering", () => {
 
   assert.equal(display.type, "graph");
   assert.equal(edge.type, "path");
-  assert.equal(edge.attrs.d, "M 100 30 L 100 40 L 200 40 L 200 30");
+  assert.equal(edge.props.path, "M 100 30 L 100 40 L 200 40 L 200 30");
   assert.equal(math.source, "\\alpha");
+  assert.equal(math.fontSize, 13);
   assert.equal(text.x, 250);
   assert.equal(text.y, 30);
+  assert.equal(text.fontSize, 18);
 });
 
 test("embeds nested plot display lists in graph display lists", () => {
@@ -577,16 +579,16 @@ test("embeds nested plot display lists in graph display lists", () => {
   const plot = display.items.find((item) => item.type === "plot");
   const plotFrame = plot.displayList.items
     .flatMap((item) => item.children ?? [])
-    .find((item) => item.attrs?.class === "plot-frame");
-  const plotDataLayer = plot.displayList.items.find((item) => item.attrs?.class === "plot-data");
+    .find((item) => item.props?.className === "plot-frame");
+  const plotDataLayer = plot.displayList.items.find((item) => item.props?.className === "plot-data");
 
-  assert.equal(plot.attrs.width, 320);
-  assert.equal(plot.attrs.height, 220);
+  assert.equal(plot.props.width, 320);
+  assert.equal(plot.props.height, 220);
   assert.equal(plot.displayList.type, "plot");
   assert.equal(plot.displayList.width, 320);
   assert.equal(plot.displayList.height, 220);
   assert.ok(plotFrame);
-  assert.ok(plotDataLayer.children[0].children.find((item) => item.attrs?.class === "plot-line"));
+  assert.ok(plotDataLayer.children[0].children.find((item) => item.props?.className === "plot-line"));
 });
 
 test("generates offset straight edge path data", () => {
