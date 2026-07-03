@@ -1,5 +1,6 @@
 import { regeneratePlotData } from "./plot.js";
 import { applyPointMaps } from "./plot-math.js";
+import { normalizeDisplayDefaults } from "./display-defaults.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MATH_LABEL_HEIGHT = 34;
@@ -25,6 +26,7 @@ export function buildPlotDisplayList(plot, options = {}) {
     height,
     padding,
     frame: options.frame ?? {},
+    defaults: normalizeDisplayDefaults(options.defaults),
     xDomain: expandDomain(xDomain),
     yDomain: expandDomain(yDomain),
     arrowMarkerPrefix: `graphsx-plot-arrow-${plotClipIdCounter + 1}`
@@ -414,11 +416,9 @@ function axisLabel(context, axis, x, y, anchor, rotate = 0) {
 }
 
 function drawPlainLabel(context, label, x, y, className, anchor, style = null, rotate = 0, baseline = null) {
-  return styledEl(context, "text", style, {
+  return el(context, "text", {
     class: className,
-    fill: "#111111",
-    fontSize: 12,
-    fontFamily: "ui-sans-serif, system-ui, sans-serif",
+    ...resolvedTextStyle(context, style),
     x,
     y,
     textAnchor: anchor,
@@ -707,7 +707,8 @@ function drawLegend(context, legend) {
   const entries = legendEntries(context.plot);
   if (entries.length === 0) return null;
 
-  const fontSize = Number(legend.attrs.fontSize ?? legend.attrs.fontsize ?? legend.attrs.textStyle?.fontSize ?? 12);
+  const textStyle = resolvedTextStyle(context, legendTextStyle(legend.attrs));
+  const fontSize = Number(legend.attrs.fontSize ?? legend.attrs.fontsize ?? textStyle.fontSize);
   const padding = Number(legend.attrs.padding ?? 10);
   const gap = Number(legend.attrs.gap ?? 8);
   const swatchWidth = Number(legend.attrs.swatchWidth ?? legend.attrs.swatchwidth ?? 26);
@@ -747,7 +748,7 @@ function drawLegend(context, legend) {
       y,
       "plot-legend-label",
       "start",
-      legendTextStyle(legend.attrs),
+      textStyle,
       0,
       "middle"
     ));
@@ -844,15 +845,15 @@ function estimateTextWidth(value, fontSize) {
 function drawPlotLabel(context, value, x, y, className, anchor = "middle", style = null, rotate = 0, baseline = null) {
   const label = String(value);
   const math = parseMathLabel(label);
-  const fontSize = labelFontSize(style);
   if (math) {
-    return drawMathLabel(context, math, x, y, className, anchor, rotate, baseline, style, fontSize);
+    return drawMathLabel(context, math, x, y, className, anchor, rotate, baseline, style);
   }
 
   return drawPlainLabel(context, math ?? label, x, y, className, anchor, style, rotate, baseline);
 }
 
-function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, baseline = null, style = null, fontSize = 12) {
+function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, baseline = null, style = null) {
+  const textStyle = resolvedMathStyle(context, style);
   return {
     type: "math",
     source,
@@ -863,8 +864,9 @@ function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, bas
     anchor,
     rotate,
     baseline,
-    fontSize,
-    style
+    fontSize: textStyle.fontSize,
+    style,
+    textStyle
   };
 }
 
@@ -876,12 +878,18 @@ function parseMathLabel(label) {
   return null;
 }
 
-function labelFontSize(style) {
-  if (!style || typeof style !== "object") return 12;
-  const raw = style.fontSize ?? style.fontsize;
-  if (raw == null) return 12;
-  const parsed = Number.parseFloat(raw);
-  return Number.isFinite(parsed) ? raw : 12;
+function resolvedTextStyle(context, style = null) {
+  return {
+    ...context.defaults.text,
+    ...(style && typeof style === "object" ? style : {})
+  };
+}
+
+function resolvedMathStyle(context, style = null) {
+  return {
+    ...context.defaults.math,
+    ...(style && typeof style === "object" ? style : {})
+  };
 }
 
 function estimateMathWidth(source, fontSize = 12) {
@@ -1189,7 +1197,7 @@ function annotationArrowDisplayProps(attrs) {
 function displayPropsToSvgAttrs(context, props = {}) {
   const attrs = {};
   for (const [key, value] of Object.entries(props)) {
-    if (value == null || value === false || key === "headArrow" || key === "tailArrow" || key === "arrowSize") continue;
+    if (value == null || value === false || key === "headArrow" || key === "tailArrow" || key === "arrowSize" || key === "profile") continue;
     if (key === "commands") {
       attrs.d = commandsToPathData(value);
     } else if (key === "transform") {
@@ -1274,9 +1282,7 @@ function renderMathItem(context, item) {
   if (!context.katex) {
     return renderDisplayItem(context, el(context, "text", {
       class: item.className,
-      fill: "#111111",
-      fontSize: 12,
-      fontFamily: "ui-sans-serif, system-ui, sans-serif",
+      ...item.textStyle,
       x: item.x,
       y: item.y,
       textAnchor: item.anchor,
@@ -1300,10 +1306,13 @@ function renderMathItem(context, item) {
   host.style.display = "flex";
   host.style.alignItems = "center";
   host.style.justifyContent = item.anchor === "middle" ? "center" : item.anchor === "end" ? "flex-end" : "flex-start";
-  host.style.color = "#1e2724";
-  if (item.fontSize != null) host.style.fontSize = cssSize(item.fontSize);
-  if (item.style && typeof item.style === "object") {
-    for (const [key, value] of Object.entries(item.style)) {
+  if (item.textStyle && typeof item.textStyle === "object") {
+    for (const [key, value] of Object.entries(item.textStyle)) {
+      if (key === "profile") continue;
+      if (key === "fill") {
+        host.style.color = String(value);
+        continue;
+      }
       host.style[key] = key === "fontSize" || key === "fontsize" ? cssSize(value) : String(value);
     }
   }

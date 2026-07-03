@@ -571,6 +571,54 @@ test("builds a graph display list before SVG rendering", () => {
   assert.equal(text.fontSize, 18);
 });
 
+test("applies custom display defaults to graph labels and nested plots", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[0, 0]} label="$a$">
+        <Port id="out" right label="out" />
+      </Rect>
+      <Rect id="B" at={[160, 0]} label="B" labelFontSize={21} />
+      <Plot id="P" at={[0, 120]} width={240} height={160} xDomain={[0, 1]} yDomain={[0, 1]}>
+        <Text at={[0.5, 0.5]} label="$p$" />
+      </Plot>
+    </Graph>
+  `);
+
+  const display = buildGraphDisplayList(graph, {
+    minWidth: 0,
+    minHeight: 0,
+    viewportPadding: 0,
+    defaults: {
+      text: { fontFamily: "Serif", fontSize: 15, fill: "#222222" },
+      math: { fontSize: 16, fill: "#333333", profile: "openmath" },
+      graph: { labelFontSize: 17, portLabelFontSize: 9 }
+    }
+  });
+  const nodeMath = display.items.find((item) => item.type === "math" && item.source === "a");
+  const portText = display.items.find((item) => item.type === "text" && item.text === "out");
+  const nodeText = display.items.find((item) => item.type === "text" && item.text === "B");
+  const plot = display.items.find((item) => item.type === "plot");
+  const nestedMath = plot.displayList.items
+    .find((item) => item.props?.className === "plot-labels")
+    .children.find((item) => item.type === "math" && item.source === "p");
+
+  assert.equal(nodeMath.fontSize, 17);
+  assert.deepEqual(nodeMath.textStyle, {
+    fill: "#333333",
+    fontSize: 17,
+    profile: "openmath"
+  });
+  assert.equal(portText.fontSize, 9);
+  assert.equal(portText.textStyle.fontFamily, "Serif");
+  assert.equal(nodeText.fontSize, 21);
+  assert.equal(nodeText.textStyle.fill, "#222222");
+  assert.deepEqual(nestedMath.textStyle, {
+    fill: "#333333",
+    fontSize: 16,
+    profile: "openmath"
+  });
+});
+
 test("embeds nested plot display lists in graph display lists", () => {
   const graph = parseGraph(`
     <Graph>

@@ -37,6 +37,11 @@ export {
 } from "./plot-renderer.js";
 
 export {
+  GRAPHSX_DISPLAY_DEFAULTS,
+  normalizeDisplayDefaults
+} from "./display-defaults.js";
+
+export {
   GRAPHSX_FENCE,
   GRAPHSX_DEFS_FENCE,
   graphsxMarkdownIt,

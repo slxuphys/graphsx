@@ -52,6 +52,44 @@ test("builds a plot display list before SVG rendering", () => {
   ]);
   assert.equal(mathLabel.source, "p");
   assert.equal(mathLabel.fontSize, 18);
+  assert.deepEqual(mathLabel.textStyle, {
+    fill: "#1e2724",
+    fontSize: 18,
+    profile: "katex"
+  });
+});
+
+test("applies custom display defaults to plot labels", () => {
+  const plot = parsePlot(`
+    <Plot width={300} height={200} xDomain={[0, 1]} yDomain={[0, 1]}>
+      <Axis x label="$x$" />
+      <Text at={[0.5, 0.5]} label="plain" />
+      <Text at={[0.5, 0.8]} label="$m$" />
+      <Text at={[0.5, 0.2]} label="$big$" style={{ fontSize: 22 }} />
+    </Plot>
+  `);
+
+  const display = buildPlotDisplayList(plot, {
+    defaults: {
+      text: { fontFamily: "Serif", fontSize: 15, fill: "#222222" },
+      math: { fontSize: 16, fill: "#333333", profile: "openmath" }
+    }
+  });
+  const labelLayer = display.items.find((item) => item.props?.className === "plot-labels");
+  const plain = labelLayer.children.find((item) => item.text === "plain");
+  const math = labelLayer.children.find((item) => item.type === "math" && item.source === "m");
+  const explicit = labelLayer.children.find((item) => item.type === "math" && item.source === "big");
+
+  assert.equal(plain.props.fontFamily, "Serif");
+  assert.equal(plain.props.fontSize, 15);
+  assert.equal(plain.props.fill, "#222222");
+  assert.deepEqual(math.textStyle, {
+    fill: "#333333",
+    fontSize: 16,
+    profile: "openmath"
+  });
+  assert.equal(explicit.textStyle.fontSize, 22);
+  assert.equal(explicit.textStyle.fill, "#333333");
 });
 
 test("parses multiple plot blocks", () => {

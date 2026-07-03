@@ -1,4 +1,5 @@
 import { buildPlotDisplayList, renderPlotDisplayListToSvg } from "./plot-renderer.js";
+import { normalizeDisplayDefaults } from "./display-defaults.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -26,6 +27,7 @@ export function buildGraphDisplayList(graph, options = {}) {
   const context = {
     graph,
     nodes,
+    defaults: normalizeDisplayDefaults(options.defaults),
     routing: routingDefaults(graph.attrs),
     arrowMarkers: collectArrowMarkerKeys(edges, paths)
   };
@@ -93,26 +95,26 @@ function nodeTreeDisplayItems(context, node, offsetX, offsetY) {
     if (showsGroupBox(node)) {
       items.push(...groupBoxDisplayItems(context, node, offsetX, offsetY));
     } else {
-      appendItem(items, nodeLabelDisplayItem(node, offsetX, offsetY));
+      appendItem(items, nodeLabelDisplayItem(context, node, offsetX, offsetY));
     }
     for (const child of node.children) {
       items.push(...nodeTreeDisplayItems(context, child, offsetX, offsetY));
     }
     for (const leg of Object.values(node.legs)) {
-      items.push(...legDisplayItems(leg, offsetX, offsetY));
+      items.push(...legDisplayItems(context, leg, offsetX, offsetY));
     }
     return items;
   }
 
-  appendItem(items, shapeDisplayItem(node, offsetX, offsetY));
-  appendItem(items, nodeLabelDisplayItem(node, offsetX, offsetY));
+  appendItem(items, shapeDisplayItem(context, node, offsetX, offsetY));
+  appendItem(items, nodeLabelDisplayItem(context, node, offsetX, offsetY));
   for (const leg of Object.values(node.legs)) {
-    items.push(...legDisplayItems(leg, offsetX, offsetY));
+    items.push(...legDisplayItems(context, leg, offsetX, offsetY));
   }
   return items;
 }
 
-function shapeDisplayItem(node, offsetX, offsetY) {
+function shapeDisplayItem(context, node, offsetX, offsetY) {
   if (node.shape === "point") {
     return null;
   }
@@ -124,7 +126,7 @@ function shapeDisplayItem(node, offsetX, offsetY) {
     return {
       layer: "node",
       type: "plot",
-      displayList: buildPlotDisplayList(node.plot, { minWidth: width, minHeight: height }),
+      displayList: buildPlotDisplayList(node.plot, { minWidth: width, minHeight: height, defaults: context.defaults }),
       props: {
         className: "plot-node",
         x: node.transform ? node.x : node.x + offsetX,
@@ -194,24 +196,24 @@ function groupBoxDisplayItems(context, node, offsetX, offsetY) {
       strokeDasharray: "6 5"
     }
   }];
-  appendItem(items, nodeLabelDisplayItem(node, offsetX, offsetY, {
+  appendItem(items, nodeLabelDisplayItem(context, node, offsetX, offsetY, {
     x: node.x,
     y: bounds.minY - 30
   }));
   return items;
 }
 
-function nodeLabelDisplayItem(node, offsetX, offsetY, position = null) {
+function nodeLabelDisplayItem(context, node, offsetX, offsetY, position = null) {
   if (node.attrs.label == null) {
     return null;
   }
   const box = nodeBox(node);
   const x = position?.x ?? box.cx;
   const y = position?.y ?? box.cy;
-  return labelDisplayItem(node.attrs.label, x + offsetX, y + offsetY, "node-label", "middle", node.attrs);
+  return labelDisplayItem(context, node.attrs.label, x + offsetX, y + offsetY, "node-label", "middle", node.attrs);
 }
 
-function legDisplayItems(leg, offsetX, offsetY) {
+function legDisplayItems(context, leg, offsetX, offsetY) {
   if (leg.auto && leg.attrs.label == null && leg.attrs.style == null) {
     return [];
   }
@@ -230,15 +232,15 @@ function legDisplayItems(leg, offsetX, offsetY) {
     style: leg.attrs.style
   }];
   if (leg.attrs.label != null) {
-    items.push(labelDisplayItem(leg.attrs.label, leg.x + offsetX + 10, leg.y + offsetY - 10, "leg-label", "start", leg.attrs));
+    items.push(labelDisplayItem(context, leg.attrs.label, leg.x + offsetX + 10, leg.y + offsetY - 10, "leg-label", "start", leg.attrs));
   }
   return items;
 }
 
-function labelDisplayItem(value, x, y, className, anchor = "middle", attrs = {}) {
+function labelDisplayItem(context, value, x, y, className, anchor = "middle", attrs = {}) {
   const label = String(value);
   const math = parseMathLabel(label);
-  const labelStyle = labelStyleProps(attrs, className);
+  const labelStyle = labelStyleProps(context, attrs, className, Boolean(math));
   return math
     ? { layer: "node", type: "math", source: math, x, y, className, anchor, ...labelStyle }
     : { layer: "node", type: "text", text: label, x, y, className, anchor, ...labelStyle };
@@ -298,22 +300,22 @@ function renderDisplayItem(context, item) {
   }
   if (item.type === "math") {
     return context.katex
-      ? drawMathLabel(context, item.source, item.x, item.y, item.className, item.anchor, item.fontSize, item.style)
-      : drawPlainDisplayText(context, item.source, item.x, item.y, item.className, item.anchor, item.fontSize, item.style);
+      ? drawMathLabel(context, item.source, item.x, item.y, item.className, item.anchor, item.fontSize, item.textStyle)
+      : drawPlainDisplayText(context, item.source, item.x, item.y, item.className, item.anchor, item.textStyle);
   }
   if (item.type === "text") {
-    return drawPlainDisplayText(context, item.text, item.x, item.y, item.className, item.anchor, item.fontSize, item.style);
+    return drawPlainDisplayText(context, item.text, item.x, item.y, item.className, item.anchor, item.textStyle);
   }
   return null;
 }
 
-function drawPlainDisplayText(context, text, x, y, className, anchor = "middle", fontSize = null, style = null) {
-  return styledEl(context, "text", style, {
+function drawPlainDisplayText(context, text, x, y, className, anchor = "middle", textStyle = null) {
+  return styledEl(context, "text", null, {
     class: className,
+    ...(textStyle ?? {}),
     x,
     y: y + 4,
-    "text-anchor": anchor,
-    ...(fontSize != null ? { "font-size": fontSize } : {})
+    "text-anchor": anchor
   }, text);
 }
 
@@ -1402,7 +1404,7 @@ function styledEl(context, name, style, attrs = {}, text = null) {
 function displayPropsToSvgAttrs(context, props = {}) {
   const attrs = {};
   for (const [key, value] of Object.entries(props)) {
-    if (value == null || value === false || key === "headArrow" || key === "tailArrow" || key === "arrowSize") continue;
+    if (value == null || value === false || key === "headArrow" || key === "tailArrow" || key === "arrowSize" || key === "profile") continue;
     if (key === "commands") {
       attrs.d = commandsToPathData(value);
     } else if (key === "transform") {
@@ -1440,12 +1442,19 @@ function displayPropSvgName(key) {
   return names[key] ?? key.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`);
 }
 
-function labelStyleProps(attrs = {}, className = "node-label") {
+function labelStyleProps(context, attrs = {}, className = "node-label", math = false) {
   const style = attrs.labelStyle && typeof attrs.labelStyle === "object" ? attrs.labelStyle : null;
-  const fontSize = labelFontSize(attrs, style) ?? defaultLabelFontSize(className);
+  const fontSize = labelFontSize(attrs, style) ?? defaultLabelFontSize(context, className);
+  const baseStyle = math ? context.defaults.math : context.defaults.text;
+  const textStyle = {
+    ...baseStyle,
+    ...(style ?? {}),
+    ...(fontSize != null ? { fontSize } : {})
+  };
   return {
     ...(fontSize != null ? { fontSize } : {}),
-    ...(style ? { style } : {})
+    ...(style ? { style } : {}),
+    textStyle
   };
 }
 
@@ -1455,8 +1464,10 @@ function labelFontSize(attrs = {}, style = null) {
   return value;
 }
 
-function defaultLabelFontSize(className) {
-  return className === "leg-label" ? 11 : 13;
+function defaultLabelFontSize(context, className) {
+  return className === "leg-label"
+    ? context.defaults.graph.portLabelFontSize
+    : context.defaults.graph.labelFontSize;
 }
 
 function svgStyleAttrs(style) {
@@ -1485,7 +1496,7 @@ function drawLabel(context, value, x, y, className, anchor = "middle") {
   }, math ?? label);
 }
 
-function drawMathLabel(context, source, x, y, className, anchor, fontSize = null, style = null) {
+function drawMathLabel(context, source, x, y, className, anchor, fontSize = null, textStyle = null) {
   const width = estimateMathWidth(source, fontSize);
   const height = Math.max(24, Number(fontSize ?? 16) * 2.125);
   const left = anchor === "middle" ? x - width / 2 : x;
@@ -1502,12 +1513,17 @@ function drawMathLabel(context, source, x, y, className, anchor, fontSize = null
   host.style.display = "flex";
   host.style.alignItems = "center";
   host.style.justifyContent = anchor === "middle" ? "center" : "flex-start";
-  host.style.color = "#1e2724";
-  if (fontSize != null) host.style.fontSize = cssSize(fontSize);
-  if (style && typeof style === "object") {
-    for (const [key, value] of Object.entries(style)) {
+  if (textStyle && typeof textStyle === "object") {
+    for (const [key, value] of Object.entries(textStyle)) {
+      if (key === "profile") continue;
+      if (key === "fill") {
+        host.style.color = String(value);
+        continue;
+      }
       host.style[key] = key === "fontSize" || key === "fontsize" ? cssSize(value) : String(value);
     }
+  } else if (fontSize != null) {
+    host.style.fontSize = cssSize(fontSize);
   }
   context.katex.render(source, host, { throwOnError: false });
   foreignObject.append(host);
