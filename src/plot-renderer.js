@@ -853,10 +853,6 @@ function drawPlotLabel(context, value, x, y, className, anchor = "middle", style
 }
 
 function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, baseline = null, style = null, fontSize = 12) {
-  const width = estimateMathWidth(source, fontSize);
-  const height = mathLabelHeight(fontSize);
-  const left = anchor === "middle" ? x - width / 2 : anchor === "end" ? x - width : x;
-  const top = baseline === "hanging" ? y - mathHangingInset(fontSize) : y - height / 2;
   return {
     type: "math",
     source,
@@ -864,23 +860,11 @@ function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, bas
     className,
     x,
     y,
-    left,
-    top,
-    width,
-    height,
     anchor,
     rotate,
     baseline,
     fontSize,
-    style,
-    props: {
-      className,
-      x: left,
-      y: top,
-      width,
-      height,
-      ...(rotate ? { transform: [rotateTransform(rotate, x, y)] } : {})
-    }
+    style
   };
 }
 
@@ -1301,10 +1285,18 @@ function renderMathItem(context, item) {
     }, item.fallback));
   }
 
-  const foreignObject = renderDisplayItem(context, el(context, "foreignObject", item.props));
+  const box = mathHostBox(item);
+  const foreignObject = renderDisplayItem(context, el(context, "foreignObject", {
+    class: item.className,
+    x: box.x,
+    y: box.y,
+    width: box.width,
+    height: box.height,
+    ...(item.rotate ? { transform: [rotateTransform(item.rotate, item.x, item.y)] } : {})
+  }));
   const host = context.document.createElement("div");
-  host.style.width = `${item.width}px`;
-  host.style.height = `${item.height}px`;
+  host.style.width = `${box.width}px`;
+  host.style.height = `${box.height}px`;
   host.style.display = "flex";
   host.style.alignItems = "center";
   host.style.justifyContent = item.anchor === "middle" ? "center" : item.anchor === "end" ? "flex-end" : "flex-start";
@@ -1318,6 +1310,14 @@ function renderMathItem(context, item) {
   context.katex.render(item.source, host, { throwOnError: false });
   foreignObject.append(host);
   return foreignObject;
+}
+
+function mathHostBox(item) {
+  const width = estimateMathWidth(item.source, item.fontSize);
+  const height = mathLabelHeight(item.fontSize);
+  const x = item.anchor === "middle" ? item.x - width / 2 : item.anchor === "end" ? item.x - width : item.x;
+  const y = item.baseline === "hanging" ? item.y - mathHangingInset(item.fontSize) : item.y - height / 2;
+  return { x, y, width, height };
 }
 
 function cssSize(value) {
