@@ -12,6 +12,7 @@
   },
   "files": [
     "src/index.js",
+    "src/display-defaults.js",
     "src/errors.js",
     "src/literals.js",
     "src/markup.js",
