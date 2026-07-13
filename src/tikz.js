@@ -7,6 +7,15 @@ const DEFAULT_CM_TO_PX = 80;
 const DEFAULT_NODE_WIDTH = 72;
 const DEFAULT_NODE_HEIGHT = 42;
 const DEFAULT_CIRCLE_R = 18;
+const TIKZ_LINE_WIDTHS = {
+  "ultra thin": 0.1,
+  "very thin": 0.2,
+  thin: 0.4,
+  semithick: 0.6,
+  thick: 0.8,
+  "very thick": 1.2,
+  "ultra thick": 1.6
+};
 
 export function parseTikz(source, options = {}) {
   const clean = stripComments(source);
@@ -431,7 +440,7 @@ function resolveTikzStyle(styles, options, cmToPx = DEFAULT_CM_TO_PX) {
     draw: false,
     fill: "none",
     stroke: "#111111",
-    strokeWidth: 1.5,
+    strokeWidth: TIKZ_LINE_WIDTHS.thin,
     textStyle: {}
   };
   for (const option of merged) {
@@ -444,9 +453,7 @@ function resolveTikzStyle(styles, options, cmToPx = DEFAULT_CM_TO_PX) {
       if (value) style.stroke = tikzColor(value);
     } else if (key === "fill") {
       style.fill = tikzColor(value ?? "black");
-    } else if (key === "thick") style.strokeWidth = 2.4;
-    else if (key === "very thick") style.strokeWidth = 3.2;
-    else if (key === "ultra thick") style.strokeWidth = 4;
+    } else if (Object.hasOwn(TIKZ_LINE_WIDTHS, key)) style.strokeWidth = TIKZ_LINE_WIDTHS[key];
     else if (key === "dashed") style.strokeDasharray = "6 5";
     else if (key === "->" || key === "stealth") style.headArrow = true;
     else if (key === "<-") style.tailArrow = true;

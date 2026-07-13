@@ -117,6 +117,30 @@ test("applies cmToPx to TikZ coordinates, shifts, and style lengths", () => {
   assert.deepEqual(model.coordinates[0], { id: "B", x: 84, y: -50 });
 });
 
+test("maps TikZ line thickness keywords", () => {
+  const model = parseTikz(`
+    \\draw (0,0) -- (1,0);
+    \\draw[ultra thin] (0,0) -- (1,0);
+    \\draw[very thin] (0,0) -- (1,0);
+    \\draw[thin] (0,0) -- (1,0);
+    \\draw[semithick] (0,0) -- (1,0);
+    \\draw[thick] (0,0) -- (1,0);
+    \\draw[very thick] (0,0) -- (1,0);
+    \\draw[ultra thick] (0,0) -- (1,0);
+  `);
+
+  assert.deepEqual(model.paths.map((path) => path.props.strokeWidth), [
+    0.4,
+    0.1,
+    0.2,
+    0.4,
+    0.6,
+    0.8,
+    1.2,
+    1.6
+  ]);
+});
+
 test("keeps unit as a backwards-compatible TikZ cm scale alias", () => {
   const model = parseTikz(`\\node[rectangle, draw=black, minimum width=1cm] (A) at (2,0) {A};`, { unit: 50 });
 
