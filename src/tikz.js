@@ -2,7 +2,7 @@ import { GraphDslError } from "./errors.js";
 import { normalizeDisplayDefaults } from "./display-defaults.js";
 import { renderGraphDisplayListToSvg } from "./renderer.js";
 
-const DEFAULT_UNIT = 80;
+const DEFAULT_CM_TO_PX = 80;
 const DEFAULT_NODE_WIDTH = 72;
 const DEFAULT_NODE_HEIGHT = 42;
 const DEFAULT_CIRCLE_R = 18;
@@ -11,9 +11,10 @@ export function parseTikz(source, options = {}) {
   const clean = stripComments(source);
   const definitions = parseTikzDefinitions(clean);
   const body = stripTikzSetBlocks(tikzBody(clean));
+  const cmToPx = Number(options.cmToPx ?? options.unit ?? DEFAULT_CM_TO_PX);
   const model = {
     type: "tikz",
-    unit: Number(options.unit ?? DEFAULT_UNIT),
+    cmToPx,
     styles: definitions.styles,
     pics: definitions.pics,
     nodes: [],
@@ -184,7 +185,7 @@ function parseNodeCommand(state, body) {
   const options = parseOptionList(trimBrackets(match[1] ?? ""));
   const id = scopedName(state, match[2]);
   const point = resolveCoordinate(state, match[3]);
-  const style = resolveTikzStyle(state.model.styles, options);
+  const style = resolveTikzStyle(state.model.styles, options, state.model.cmToPx);
   const label = match[4].trim();
   const width = style.width ?? DEFAULT_NODE_WIDTH;
   const height = style.height ?? DEFAULT_NODE_HEIGHT;
@@ -221,7 +222,7 @@ function parseCoordinateCommand(state, body) {
 
 function parseDrawCommand(state, body) {
   const { options, rest } = splitCommandOptions(body);
-  const style = resolveTikzStyle(state.model.styles, parseOptionList(options));
+  const style = resolveTikzStyle(state.model.styles, parseOptionList(options), state.model.cmToPx);
   const tokens = pathTokens(rest);
   if (tokens.length < 1 || tokens[0].type !== "coord") {
     throw new GraphDslError(`Unsupported TikZ draw path: \\draw${body};`);
@@ -261,13 +262,13 @@ function parseDrawCommand(state, body) {
 
 function parseFillDrawCommand(state, body) {
   const { options, rest } = splitCommandOptions(body);
-  const style = resolveTikzStyle(state.model.styles, parseOptionList(options));
+  const style = resolveTikzStyle(state.model.styles, parseOptionList(options), state.model.cmToPx);
   const match = rest.match(/^\s*\(([\s\S]+?)\)\s+circle\s+\(([\s\S]+?)\)/);
   if (!match) throw new GraphDslError(`Unsupported TikZ filldraw command: \\filldraw${body};`);
   const point = resolveCoordinate(state, match[1]);
   state.model.marks.push({
     ...point,
-    r: lengthToPx(match[2], state.model.unit),
+    r: lengthToPx(match[2], state.model.cmToPx),
     fill: style.fill === "none" ? style.stroke : style.fill,
     stroke: style.stroke,
     strokeWidth: style.strokeWidth,
@@ -400,7 +401,7 @@ function findCommandEnd(source, start) {
   return -1;
 }
 
-function resolveTikzStyle(styles, options) {
+function resolveTikzStyle(styles, options, cmToPx = DEFAULT_CM_TO_PX) {
   const merged = [];
   for (const option of options) {
     if (styles.has(option.key)) {
@@ -435,12 +436,12 @@ function resolveTikzStyle(styles, options) {
     else if (key === "<->") {
       style.headArrow = true;
       style.tailArrow = true;
-    } else if (key === "minimum width") style.width = lengthToPx(value, DEFAULT_UNIT);
-    else if (key === "minimum height") style.height = lengthToPx(value, DEFAULT_UNIT);
+    } else if (key === "minimum width") style.width = lengthToPx(value, cmToPx);
+    else if (key === "minimum height") style.height = lengthToPx(value, cmToPx);
     else if (key === "minimum size") {
-      style.width = lengthToPx(value, DEFAULT_UNIT);
-      style.height = lengthToPx(value, DEFAULT_UNIT);
-    } else if (key === "rounded corners") style.corner = value ? lengthToPx(value, DEFAULT_UNIT) : 6;
+      style.width = lengthToPx(value, cmToPx);
+      style.height = lengthToPx(value, cmToPx);
+    } else if (key === "rounded corners") style.corner = value ? lengthToPx(value, cmToPx) : 6;
     else if (isColorKeyword(key)) style.textStyle.fill = tikzColor(key);
   }
   if (style.shape === "circle" && (style.width || style.height)) {
@@ -459,16 +460,16 @@ function resolveCoordinate(state, raw) {
     const xShift = shifts.find((item) => item.key === "xshift")?.value;
     const yShift = shifts.find((item) => item.key === "yshift")?.value;
     return {
-      x: base.x + lengthToPx(xShift ?? 0, state.model.unit),
-      y: base.y - lengthToPx(yShift ?? 0, state.model.unit)
+      x: base.x + lengthToPx(xShift ?? 0, state.model.cmToPx),
+      y: base.y - lengthToPx(yShift ?? 0, state.model.cmToPx)
     };
   }
   const pair = source.match(/^([+-]?(?:\d+\.?\d*|\.\d+))\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+))$/);
   if (pair) {
     const origin = state.scope?.origin ?? { x: 0, y: 0 };
     return {
-      x: origin.x + Number(pair[1]) * state.model.unit,
-      y: origin.y - Number(pair[2]) * state.model.unit
+      x: origin.x + Number(pair[1]) * state.model.cmToPx,
+      y: origin.y - Number(pair[2]) * state.model.cmToPx
     };
   }
   const name = scopedReferenceName(state, source);

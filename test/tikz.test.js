@@ -98,6 +98,33 @@ test("supports nested coordinates inside reusable TikZ pics", () => {
   ]);
 });
 
+test("applies cmToPx to TikZ coordinates, shifts, and style lengths", () => {
+  const model = parseTikz(`
+    \\begin{tikzpicture}[
+      process/.style={rectangle, draw=black, fill=white, thick, rounded corners=.08cm, minimum width=1.2cm, minimum height=.6cm}
+    ]
+      \\node[process] (A) at (1,1) {A};
+      \\coordinate (B) at ([xshift=.5cm,yshift=.25cm]A.east);
+    \\end{tikzpicture}
+  `, { cmToPx: 40 });
+
+  assert.equal(model.cmToPx, 40);
+  assert.equal(model.nodes[0].x, 40);
+  assert.equal(model.nodes[0].y, -40);
+  assert.equal(model.nodes[0].width, 48);
+  assert.equal(model.nodes[0].height, 24);
+  assert.equal(model.nodes[0].corner, 3.2);
+  assert.deepEqual(model.coordinates[0], { id: "B", x: 84, y: -50 });
+});
+
+test("keeps unit as a backwards-compatible TikZ cm scale alias", () => {
+  const model = parseTikz(`\\node[rectangle, draw=black, minimum width=1cm] (A) at (2,0) {A};`, { unit: 50 });
+
+  assert.equal(model.cmToPx, 50);
+  assert.equal(model.nodes[0].x, 100);
+  assert.equal(model.nodes[0].width, 50);
+});
+
 test("renders TikZ subset to SVG", () => {
   const calls = [];
   const document = {

@@ -134,7 +134,7 @@ TikZ-subset input is parsed separately from GraphSX:
 ```js
 import { parseTikz, renderTikz } from "@slxu/graphsx/tikz";
 
-const model = parseTikz(tikzSource);
+const model = parseTikz(tikzSource, { cmToPx: 80 });
 renderTikz(document.querySelector("svg"), model, { katex });
 ```
 
