@@ -42,6 +42,30 @@ test("parses multiple graph blocks", () => {
   assert.equal(graphs.length, 2);
 });
 
+test("uses host math measurements when building graph display lists", () => {
+  const graph = parseGraph(`
+    <Graph>
+      <Rect id="A" at={[0, 0]} label="$long_math$" />
+    </Graph>
+  `);
+
+  const display = buildGraphDisplayList(graph, {
+    minWidth: 0,
+    minHeight: 0,
+    viewportPadding: 0,
+    measure: {
+      math(source, style) {
+        assert.equal(source, "long_math");
+        assert.equal(style.fontSize, 13);
+        return { width: 123, height: 45 };
+      }
+    }
+  });
+  const label = display.items.find((item) => item.type === "math");
+
+  assert.deepEqual(label.box, { x: -11.5, y: 7.5, width: 123, height: 45 });
+});
+
 test("ignores JSX and HTML comments", () => {
   const graph = parseGraph(`
     {/* top-level graph note */}

@@ -1,10 +1,9 @@
 import { regeneratePlotData } from "./plot.js";
 import { applyPointMaps } from "./plot-math.js";
 import { normalizeDisplayDefaults } from "./display-defaults.js";
+import { mathLabelBox, normalizeDisplayMeasure, textLabelBox } from "./measure.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
-const MATH_LABEL_HEIGHT = 34;
-const MATH_HANGING_INSET = 8;
 let plotClipIdCounter = 0;
 
 export function renderPlot(svg, plot, options = {}) {
@@ -27,6 +26,7 @@ export function buildPlotDisplayList(plot, options = {}) {
     padding,
     frame: options.frame ?? {},
     defaults: normalizeDisplayDefaults(options.defaults),
+    measure: normalizeDisplayMeasure(options),
     xDomain: expandDomain(xDomain),
     yDomain: expandDomain(yDomain),
     arrowMarkerPrefix: `graphsx-plot-arrow-${plotClipIdCounter + 1}`
@@ -416,15 +416,24 @@ function axisLabel(context, axis, x, y, anchor, rotate = 0) {
 }
 
 function drawPlainLabel(context, label, x, y, className, anchor, style = null, rotate = 0, baseline = null) {
-  return el(context, "text", {
+  const textStyle = resolvedTextStyle(context, style);
+  const item = el(context, "text", {
     class: className,
-    ...resolvedTextStyle(context, style),
+    ...textStyle,
     x,
     y,
     textAnchor: anchor,
     ...(baseline ? { dominantBaseline: baseline } : {}),
     ...(rotate ? { transform: [rotateTransform(rotate, x, y)] } : {})
   }, String(label));
+  item.box = textLabelBox(label, textStyle, context.measure, {
+    x,
+    y,
+    anchor,
+    baseline,
+    fontSize: textStyle.fontSize
+  });
+  return item;
 }
 
 function drawCurve(context, curve) {
@@ -854,6 +863,14 @@ function drawPlotLabel(context, value, x, y, className, anchor = "middle", style
 
 function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, baseline = null, style = null) {
   const textStyle = resolvedMathStyle(context, style);
+  const fontSize = textStyle.fontSize;
+  const box = mathLabelBox(source, textStyle, context.measure, {
+    x,
+    y,
+    anchor,
+    baseline,
+    fontSize
+  });
   return {
     type: "math",
     source,
@@ -864,7 +881,8 @@ function drawMathLabel(context, source, x, y, className, anchor, rotate = 0, bas
     anchor,
     rotate,
     baseline,
-    fontSize: textStyle.fontSize,
+    fontSize,
+    box,
     style,
     textStyle
   };
@@ -890,22 +908,6 @@ function resolvedMathStyle(context, style = null) {
     ...context.defaults.math,
     ...(style && typeof style === "object" ? style : {})
   };
-}
-
-function estimateMathWidth(source, fontSize = 12) {
-  const size = Number.parseFloat(fontSize);
-  const scale = Number.isFinite(size) ? size / 12 : 1;
-  return Math.max(34, Math.min(260, source.length * 12 * scale + 28));
-}
-
-function mathLabelHeight(fontSize = 12) {
-  const size = Number.parseFloat(fontSize);
-  return Number.isFinite(size) ? Math.max(24, size * 2.1) : MATH_LABEL_HEIGHT;
-}
-
-function mathHangingInset(fontSize = 12) {
-  const size = Number.parseFloat(fontSize);
-  return Number.isFinite(size) ? Math.max(6, size * 0.66) : MATH_HANGING_INSET;
 }
 
 function plotBounds(plot) {
@@ -1291,7 +1293,13 @@ function renderMathItem(context, item) {
     }, item.fallback));
   }
 
-  const box = mathHostBox(item);
+  const box = item.box ?? mathLabelBox(item.source, item.textStyle, {}, {
+    x: item.x,
+    y: item.y,
+    anchor: item.anchor,
+    baseline: item.baseline,
+    fontSize: item.fontSize
+  });
   const foreignObject = renderDisplayItem(context, el(context, "foreignObject", {
     class: item.className,
     x: box.x,
@@ -1319,14 +1327,6 @@ function renderMathItem(context, item) {
   context.katex.render(item.source, host, { throwOnError: false });
   foreignObject.append(host);
   return foreignObject;
-}
-
-function mathHostBox(item) {
-  const width = estimateMathWidth(item.source, item.fontSize);
-  const height = mathLabelHeight(item.fontSize);
-  const x = item.anchor === "middle" ? item.x - width / 2 : item.anchor === "end" ? item.x - width : item.x;
-  const y = item.baseline === "hanging" ? item.y - mathHangingInset(item.fontSize) : item.y - height / 2;
-  return { x, y, width, height };
 }
 
 function cssSize(value) {

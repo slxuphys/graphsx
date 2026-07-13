@@ -42,6 +42,14 @@ export {
 } from "./display-defaults.js";
 
 export {
+  normalizeDisplayMeasure,
+  mathLabelBox,
+  textLabelBox,
+  estimateMathSize,
+  estimateTextSize
+} from "./measure.js";
+
+export {
   parseTikz,
   parseTikzDocument,
   buildTikzDisplayList,

@@ -1,5 +1,6 @@
 import { buildPlotDisplayList, renderPlotDisplayListToSvg } from "./plot-renderer.js";
 import { normalizeDisplayDefaults } from "./display-defaults.js";
+import { mathLabelBox, normalizeDisplayMeasure, textLabelBox } from "./measure.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -28,6 +29,7 @@ export function buildGraphDisplayList(graph, options = {}) {
     graph,
     nodes,
     defaults: normalizeDisplayDefaults(options.defaults),
+    measure: normalizeDisplayMeasure(options),
     routing: routingDefaults(graph.attrs),
     arrowMarkers: collectArrowMarkerKeys(edges, paths)
   };
@@ -126,7 +128,12 @@ function shapeDisplayItem(context, node, offsetX, offsetY) {
     return {
       layer: "node",
       type: "plot",
-      displayList: buildPlotDisplayList(node.plot, { minWidth: width, minHeight: height, defaults: context.defaults }),
+      displayList: buildPlotDisplayList(node.plot, {
+        minWidth: width,
+        minHeight: height,
+        defaults: context.defaults,
+        measure: context.measure
+      }),
       props: {
         className: "plot-node",
         x: node.transform ? node.x : node.x + offsetX,
@@ -241,9 +248,28 @@ function labelDisplayItem(context, value, x, y, className, anchor = "middle", at
   const label = String(value);
   const math = parseMathLabel(label);
   const labelStyle = labelStyleProps(context, attrs, className, Boolean(math));
+  const placement = {
+    x,
+    y,
+    anchor,
+    fontSize: labelStyle.fontSize
+  };
+  const box = math
+    ? mathLabelBox(math, labelStyle.textStyle, context.measure, placement)
+    : textLabelBox(label, labelStyle.textStyle, context.measure, placement);
   return math
-    ? { layer: "node", type: "math", source: math, x, y, className, anchor, ...labelStyle }
-    : { layer: "node", type: "text", text: label, x, y, className, anchor, ...labelStyle };
+    ? { layer: "node", type: "math", source: math, x, y, className, anchor, box, ...labelStyle }
+    : {
+      layer: "node",
+      type: "text",
+      text: label,
+      x,
+      y,
+      className,
+      anchor,
+      box,
+      ...labelStyle
+    };
 }
 
 function edgeDisplayItem(context, edge, from, to, offsetX, offsetY) {
@@ -300,7 +326,7 @@ function renderDisplayItem(context, item) {
   }
   if (item.type === "math") {
     return context.katex
-      ? drawMathLabel(context, item.source, item.x, item.y, item.className, item.anchor, item.fontSize, item.textStyle)
+      ? drawMathLabel(context, item.source, item.x, item.y, item.className, item.anchor, item.fontSize, item.textStyle, item.box)
       : drawPlainDisplayText(context, item.source, item.x, item.y, item.className, item.anchor, item.textStyle);
   }
   if (item.type === "text") {
@@ -1496,20 +1522,18 @@ function drawLabel(context, value, x, y, className, anchor = "middle") {
   }, math ?? label);
 }
 
-function drawMathLabel(context, source, x, y, className, anchor, fontSize = null, textStyle = null) {
-  const width = estimateMathWidth(source, fontSize);
-  const height = Math.max(24, Number(fontSize ?? 16) * 2.125);
-  const left = anchor === "middle" ? x - width / 2 : x;
+function drawMathLabel(context, source, x, y, className, anchor, fontSize = null, textStyle = null, box = null) {
+  const hostBox = box ?? mathLabelBox(source, textStyle ?? { fontSize }, {}, { x, y, anchor, fontSize });
   const foreignObject = el(context, "foreignObject", {
     class: className,
-    x: left,
-    y: y - height / 2,
-    width,
-    height
+    x: hostBox.x,
+    y: hostBox.y,
+    width: hostBox.width,
+    height: hostBox.height
   });
   const host = context.document.createElement("div");
-  host.style.width = `${width}px`;
-  host.style.height = `${height}px`;
+  host.style.width = `${hostBox.width}px`;
+  host.style.height = `${hostBox.height}px`;
   host.style.display = "flex";
   host.style.alignItems = "center";
   host.style.justifyContent = anchor === "middle" ? "center" : "flex-start";
@@ -1536,12 +1560,6 @@ function parseMathLabel(label) {
     return trimmed.slice(1, -1);
   }
   return null;
-}
-
-function estimateMathWidth(source, fontSize = null) {
-  const size = Number.parseFloat(fontSize ?? 16);
-  const scale = Number.isFinite(size) ? size / 16 : 1;
-  return Math.max(34, Math.min(260, source.length * 12 * scale + 28));
 }
 
 function cssSize(value) {

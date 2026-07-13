@@ -59,6 +59,27 @@ test("builds a plot display list before SVG rendering", () => {
   });
 });
 
+test("uses host math measurements when building plot display lists", () => {
+  const plot = parsePlot(`
+    <Plot width={300} height={200} xDomain={[0, 1]} yDomain={[0, 1]}>
+      <Text at={[0.5, 0.5]} label="$wide$" />
+    </Plot>
+  `);
+
+  const display = buildPlotDisplayList(plot, {
+    measureMath(source, style) {
+      assert.equal(source, "wide");
+      assert.equal(style.fontSize, 12);
+      return { width: 80, height: 30 };
+    }
+  });
+  const labelLayer = display.items.find((item) => item.props?.className === "plot-labels");
+  const mathLabel = labelLayer.children.find((item) => item.type === "math");
+
+  assert.equal(mathLabel.box.width, 80);
+  assert.equal(mathLabel.box.height, 30);
+});
+
 test("applies custom display defaults to plot labels", () => {
   const plot = parsePlot(`
     <Plot width={300} height={200} xDomain={[0, 1]} yDomain={[0, 1]}>

@@ -127,6 +127,20 @@ const model = parseGraphSXDocument(source);
 renderGraphSXDocument(document.querySelector("svg"), model, { katex });
 ```
 
+Display-list builders can also ask the host for exact text/math sizes. If these hooks are omitted, GraphSX uses built-in estimates:
+
+```js
+import { buildGraphDisplayList, parseGraph } from "@slxu/graphsx";
+
+const graph = parseGraph(source);
+const display = buildGraphDisplayList(graph, {
+  measure: {
+    math: (source, style) => measureKaTeX(source, style),
+    text: (text, style) => measureCanvasText(text, style)
+  }
+});
+```
+
 Labels are opt-in. Use `label="xy"` for plain text and `label="$\alpha$"` for KaTeX math. If there is no `label` prop, no label is rendered.
 
 TikZ-subset input is parsed separately from GraphSX:

@@ -1,5 +1,6 @@
 import { GraphDslError } from "./errors.js";
 import { normalizeDisplayDefaults } from "./display-defaults.js";
+import { mathLabelBox, normalizeDisplayMeasure, textLabelBox } from "./measure.js";
 import { renderGraphDisplayListToSvg } from "./renderer.js";
 
 const DEFAULT_CM_TO_PX = 80;
@@ -42,6 +43,7 @@ export function parseTikz(source, options = {}) {
 
 export function buildTikzDisplayList(model, options = {}) {
   const defaults = normalizeDisplayDefaults(options.defaults);
+  const measure = normalizeDisplayMeasure(options);
   const items = [];
   for (const path of model.paths) {
     items.push({
@@ -113,6 +115,19 @@ export function buildTikzDisplayList(model, options = {}) {
         ...(math ? defaults.math : defaults.text),
         ...(node.textStyle ?? {})
       };
+      const box = math
+        ? mathLabelBox(math, textStyle, measure, {
+          x: node.x,
+          y: node.y,
+          anchor: "middle",
+          fontSize: textStyle.fontSize
+        })
+        : textLabelBox(node.label, textStyle, measure, {
+          x: node.x,
+          y: node.y,
+          anchor: "middle",
+          fontSize: textStyle.fontSize
+        });
       items.push(math
         ? {
           layer: "node",
@@ -123,6 +138,7 @@ export function buildTikzDisplayList(model, options = {}) {
           className: "tikz-label",
           anchor: "middle",
           fontSize: textStyle.fontSize,
+          box,
           textStyle
         }
         : {
@@ -133,6 +149,7 @@ export function buildTikzDisplayList(model, options = {}) {
           y: node.y,
           className: "tikz-label",
           anchor: "middle",
+          box,
           textStyle
         });
     }
@@ -594,7 +611,8 @@ function displayBounds(items) {
         if ("x2" in command && "y2" in command) includePoint(bounds, command.x2, command.y2);
       }
     } else if (item.type === "text" || item.type === "math") {
-      includeRect(bounds, item.x - 24, item.y - 14, 48, 28);
+      if (item.box) includeRect(bounds, item.box.x, item.box.y, item.box.width, item.box.height);
+      else includeRect(bounds, item.x - 24, item.y - 14, 48, 28);
     }
   }
   if (!Number.isFinite(bounds.minX)) return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
@@ -618,7 +636,12 @@ function shiftItem(item, dx, dy) {
     };
   }
   if (item.type === "text" || item.type === "math") {
-    return { ...item, x: item.x + dx, y: item.y + dy };
+    return {
+      ...item,
+      x: item.x + dx,
+      y: item.y + dy,
+      ...(item.box ? { box: { ...item.box, x: item.box.x + dx, y: item.box.y + dy } } : {})
+    };
   }
   return item;
 }

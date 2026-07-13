@@ -125,6 +125,26 @@ test("keeps unit as a backwards-compatible TikZ cm scale alias", () => {
   assert.equal(model.nodes[0].width, 50);
 });
 
+test("uses host math measurements for TikZ display bounds", () => {
+  const model = parseTikz(`\\node (A) at (0,0) {$abcdefghij$};`);
+  const display = buildTikzDisplayList(model, {
+    minWidth: 0,
+    minHeight: 0,
+    viewportPadding: 0,
+    measure: {
+      math(source) {
+        assert.equal(source, "abcdefghij");
+        return { width: 200, height: 40 };
+      }
+    }
+  });
+  const label = display.items.find((item) => item.type === "math");
+
+  assert.equal(display.width, 200);
+  assert.equal(display.height, 40);
+  assert.deepEqual(label.box, { x: 0, y: 0, width: 200, height: 40 });
+});
+
 test("renders TikZ subset to SVG", () => {
   const calls = [];
   const document = {
