@@ -1,12 +1,15 @@
 import { parseMarkup } from "./parser.js";
 import { parseGraphSXDocument, renderGraphSXDocument } from "./document.js";
+import { renderTikz } from "./tikz.js";
 
 export const GRAPHSX_FENCE = "graphsx";
 export const GRAPHSX_DEFS_FENCE = "graphsx-defs";
+export const GRAPHSX_TIKZ_FENCE = "graphsx-tikz";
 
 export function graphsxMarkdownIt(md, options = {}) {
   const fenceName = options.fenceName ?? GRAPHSX_FENCE;
   const defsFenceName = options.defsFenceName ?? GRAPHSX_DEFS_FENCE;
+  const tikzFenceName = options.tikzFenceName ?? GRAPHSX_TIKZ_FENCE;
   const markerClass = options.markerClass ?? "graphsx-block";
   const defsClass = options.defsClass ?? "graphsx-defs";
   const previousFence = md.renderer.rules.fence;
@@ -19,6 +22,11 @@ export function graphsxMarkdownIt(md, options = {}) {
       const name = info.attrs.name ?? info.attrs.id ?? info.args[0] ?? "default";
       const source = md.utils.escapeHtml(token.content);
       return `<div class="${defsClass}" data-graphsx-defs="${md.utils.escapeHtml(name)}" hidden><template class="graphsx-source">${source}</template></div>\n`;
+    }
+
+    if (info.name === tikzFenceName) {
+      const source = md.utils.escapeHtml(token.content);
+      return `<div class="${markerClass}" data-graphsx-tikz="true"><template class="graphsx-source">${source}</template></div>\n`;
     }
 
     if (info.name !== fenceName) {
@@ -41,6 +49,7 @@ export function renderGraphSXBlocks(root, options = {}) {
   ]);
   const blocks = [
     ...root.querySelectorAll(".graphsx-block[data-graphsx]"),
+    ...root.querySelectorAll(".graphsx-block[data-graphsx-tikz]"),
     ...root.querySelectorAll("pre > code.language-graphsx")
   ];
 
@@ -48,13 +57,13 @@ export function renderGraphSXBlocks(root, options = {}) {
     const host = block.matches("code") ? block.closest("pre") : block;
     const source = block.matches("code") ? block.textContent : block.querySelector("template.graphsx-source")?.content.textContent;
     const use = block.matches("code") ? "" : block.getAttribute("data-graphsx-use") ?? "";
+    const isTikz = !block.matches("code") && block.hasAttribute("data-graphsx-tikz");
     if (!host || source == null) continue;
 
     host.replaceChildren();
     host.classList.add("graphsx-rendered");
 
     try {
-      const graph = parseGraphWithLibraries(source, libraries, use);
       const documentRef = options.document ?? host.ownerDocument ?? document;
       const svg = documentRef.createElementNS("http://www.w3.org/2000/svg", "svg");
       const renderOptions = {
@@ -63,7 +72,9 @@ export function renderGraphSXBlocks(root, options = {}) {
         viewportPadding: 24,
         ...options
       };
-      const size = renderGraphSXDocument(svg, graph, renderOptions);
+      const size = isTikz
+        ? renderTikz(svg, source, renderOptions)
+        : renderGraphSXDocument(svg, parseGraphWithLibraries(source, libraries, use), renderOptions);
       svg.setAttribute("width", size.width);
       svg.setAttribute("height", size.height);
       host.append(svg);

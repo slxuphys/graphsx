@@ -822,7 +822,7 @@
           <a class="brand-mark" href="https://github.com/slxuphys/graphsx" target="_blank" rel="noreferrer" title="Open repository">GSX</a>
           <div class="brand-copy">
             <div class="brand-title">GraphSX Playground</div>
-            <div class="brand-subtitle">GraphSX, Markdown fences, and live editor widgets</div>
+            <div class="brand-subtitle">GraphSX, TikZ subset import, Markdown fences, and live editor widgets</div>
           </div>
         </div>
         <nav class="header-tabs" aria-label="Primary view">
@@ -843,7 +843,8 @@
             <h2>Mental Model</h2>
             <div class="syntax-grid">
               <div>JSX-like tags with static props: <code>&lt;Rect id="A" at={[0, 0]} /&gt;</code></div>
-              <div>Inline style or reusable library: <code>style={{ strokeWidth: 2 }}</code>, <code>useStyle="wire"</code></div>
+                          <div>Inline style or reusable library: <code>style={{ strokeWidth: 2 }}</code>, <code>useStyle="wire"</code></div>
+                          <div>TikZ import is separate: use the TikZ mode or a <code>graphsx-tikz</code> fence.</div>
               <div>Use <code>&lt;Plot&gt;</code> alone for one plot; place <code>&lt;Plot&gt;</code> inside <code>&lt;Graph&gt;</code> for subplots.</div>
             </div>
           </section>
@@ -957,6 +958,7 @@
             <div class="mode-controls" aria-label="Editor controls">
               <select id="mode" aria-label="Editor mode">
                 <option value="graph">GraphSX</option>
+                <option value="tikz">TikZ subset</option>
                 <option value="markdown">Markdown</option>
                 <option value="liveMarkdown">Live Preview</option>
               </select>

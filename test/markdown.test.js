@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import MarkdownIt from "markdown-it";
-import { GRAPHSX_DEFS_FENCE, GRAPHSX_FENCE, graphsxMarkdownIt, parseFenceInfo, parseGraphWithLibraries } from "../src/index.js";
+import { GRAPHSX_DEFS_FENCE, GRAPHSX_FENCE, GRAPHSX_TIKZ_FENCE, graphsxMarkdownIt, parseFenceInfo, parseGraphWithLibraries } from "../src/index.js";
 
 test("renders graphsx fences as upgradeable placeholders", () => {
   const md = new MarkdownIt().use(graphsxMarkdownIt);
@@ -50,6 +50,20 @@ test("renders graphsx definition fences as hidden libraries", () => {
   assert.match(html, /data-graphsx-defs="mps"/);
   assert.match(html, /hidden/);
   assert.match(html, /data-graphsx-use="mps"/);
+});
+
+test("renders graphsx-tikz fences as TikZ placeholders", () => {
+  const md = new MarkdownIt().use(graphsxMarkdownIt);
+  const html = md.render(`
+\`\`\`graphsx-tikz
+\\node[rectangle, draw=black] (A) at (0,0) {A};
+\`\`\`
+`);
+
+  assert.equal(GRAPHSX_TIKZ_FENCE, "graphsx-tikz");
+  assert.match(html, /class="graphsx-block"/);
+  assert.match(html, /data-graphsx-tikz="true"/);
+  assert.match(html, /<template class="graphsx-source">/);
 });
 
 test("parses quoted fence info values", () => {

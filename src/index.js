@@ -42,8 +42,18 @@ export {
 } from "./display-defaults.js";
 
 export {
+  parseTikz,
+  parseTikzDocument,
+  buildTikzDisplayList,
+  renderTikz,
+  renderTikzDisplayListToSvg,
+  tikzSummary
+} from "./tikz.js";
+
+export {
   GRAPHSX_FENCE,
   GRAPHSX_DEFS_FENCE,
+  GRAPHSX_TIKZ_FENCE,
   graphsxMarkdownIt,
   parseFenceInfo,
   parseGraphWithLibraries,

@@ -12,6 +12,7 @@ It is designed for notes, papers, docs, and small scientific figures where the s
 - standalone plots with axes, data, ticks, legends, annotations, and KaTeX labels
 - nested plots inside graphs for subplots and mixed plot/diagram figures
 - Markdown fences and CodeMirror live-preview widgets
+- a small TikZ-subset importer for common `node`, `draw`, `coordinate`, and `pic` diagrams
 
 Try the playground: https://slxuphys.github.io/graphsx/
 
@@ -127,6 +128,15 @@ renderGraphSXDocument(document.querySelector("svg"), model, { katex });
 ```
 
 Labels are opt-in. Use `label="xy"` for plain text and `label="$\alpha$"` for KaTeX math. If there is no `label` prop, no label is rendered.
+
+TikZ-subset input is parsed separately from GraphSX:
+
+```js
+import { parseTikz, renderTikz } from "@slxu/graphsx/tikz";
+
+const model = parseTikz(tikzSource);
+renderTikz(document.querySelector("svg"), model, { katex });
+```
 
 ## Syntax Model
 
@@ -506,6 +516,40 @@ Canonical tags use PascalCase. A few aliases are accepted for convenience, but n
 | `Curve` | `Series` |
 | `Legend` | `legend` |
 
+## TikZ Subset
+
+GraphSX also includes a separate TikZ-subset importer. It is intentionally orthogonal to the JSX-like GraphSX parser: TikZ source is parsed by the TikZ importer, then rendered through the same display-list/SVG layer.
+
+```tex
+\tikzset{
+  gateStyle/.style={rectangle, draw=black, fill=white!5, very thick, minimum width=1.1cm, minimum height=.55cm},
+  one gate/.pic={
+    \node[gateStyle] (-body) at (0,0) {$U$};
+    \coordinate (-left) at (-body.west);
+    \coordinate (-right) at (-body.east);
+  }
+}
+
+\begin{tikzpicture}
+  \pic (u1) at (0,0) {one gate};
+  \pic (u2) at (2,0) {one gate};
+  \draw[->, thick] (u1-right) -- (u2-left);
+\end{tikzpicture}
+```
+
+Supported v1 commands include:
+
+- `\node[...] (id) at (...) {...};`
+- `\coordinate (id) at (...);`
+- `\draw[...] (...) -- (...)`, `|-`, and `-|`
+- `\filldraw[...] (...) circle (...);`
+- `\tikzset{name/.style={...}}`
+- `\tikzset{name/.pic={...}}` with `\pic (id) at (...) {name};`
+
+Reusable `pic` definitions support local names that begin with `-`. For example `(-left)` inside a pic becomes `u1-left` when instantiated as `\pic (u1) ...`.
+
+The importer supports common styles such as `rectangle`, `circle`, `draw`, `fill`, `thick`, `very thick`, `dashed`, `->`, `<-`, `<->`, `minimum width`, `minimum height`, `minimum size`, and `rounded corners`. It is not a full TeX/TikZ engine, so arbitrary TeX macros and advanced TikZ libraries are outside the v1 scope.
+
 ## Markdown
 
 GraphSX works in Markdown with a `markdown-it` plugin:
@@ -554,6 +598,16 @@ Reusable style/shape libraries can be declared with hidden `graphsx-defs` fences
 
 Multiple library names can be separated by spaces or commas.
 
+TikZ-subset diagrams use a separate fence:
+
+````md
+```graphsx-tikz
+\begin{tikzpicture}
+  \node[rectangle, draw=black] (A) at (0,0) {A};
+\end{tikzpicture}
+```
+````
+
 ## CodeMirror Live Preview
 
 Use the CodeMirror extension to render `graphsx` fences as editable live widgets inside a Markdown editor:
@@ -572,7 +626,7 @@ new EditorView({
     markdown({
       codeLanguages: (info) => {
         const name = info.trim().split(/\s+/)[0];
-        return name === "graphsx" || name === "graphsx-defs" ? jsxLanguage : null;
+        return name === "graphsx" || name === "graphsx-defs" || name === "graphsx-tikz" ? jsxLanguage : null;
       }
     }),
     graphsxCodeMirrorLivePreview({ katex })

@@ -17,7 +17,10 @@ import {
   graphsxMarkdownIt,
   parseGraphSXDocument,
   renderGraphSXDocument,
-  renderGraphSXBlocks
+  renderGraphSXBlocks,
+  parseTikz,
+  renderTikz,
+  tikzSummary
 } from "./index.js";
 
 const graphExamples = [
@@ -465,6 +468,30 @@ console.log("not GraphSX");
 \`\`\``
   },
   {
+    name: "GraphSX and TikZ",
+    source: `# Mixed Figure Notes
+
+GraphSX and TikZ-subset fences use different parsers. They only meet at the rendering layer.
+
+\`\`\`graphsx
+<Graph>
+  <Rect id="A" at={[60, 60]} size={[90, 50]} label="GraphSX" />
+  <Rect id="B" at={[220, 60]} size={[90, 50]} label="model" />
+  <Link from="A.right" to="B.left" headArrow />
+</Graph>
+\`\`\`
+
+\`\`\`graphsx-tikz
+\\begin{tikzpicture}[
+  box/.style={rectangle, draw=black, fill=white!5, thick, minimum width=1.2cm, minimum height=.5cm}
+]
+  \\node[box] (A) at (0,0) {TikZ};
+  \\node[box] (B) at (2,0) {subset};
+  \\draw[->, thick] (A.east) -- (B.west);
+\\end{tikzpicture}
+\`\`\``
+  },
+  {
     name: "Plots In Markdown",
     source: `# Plot Notes
 
@@ -678,6 +705,82 @@ The same shape library can be reused for longer circuits by increasing the even 
   }
 ];
 
+const tikzExamples = [
+  {
+    name: "TikZ: Reusable Pic",
+    source: `\\tikzset{
+  gateStyle/.style={rectangle, draw=black, fill=white!5, very thick, minimum width=1.1cm, minimum height=.55cm},
+  wire/.style={thick, ->},
+  one gate/.pic={
+    \\node[gateStyle] (-body) at (0,0) {$U$};
+    \\coordinate (-left) at (-body.west);
+    \\coordinate (-right) at (-body.east);
+    \\coordinate (-top) at (-body.north);
+  }
+}
+
+\\begin{tikzpicture}
+  \\pic (u1) at (0,0) {one gate};
+  \\pic (u2) at (2,0) {one gate};
+  \\pic (u3) at (1,1.25) {one gate};
+
+  \\draw[wire] (u1-right) -- (u2-left);
+  \\draw[thick] (u1-top) |- (u3-left);
+  \\draw[thick] (u2-top) |- (u3-right);
+\\end{tikzpicture}`
+  },
+  {
+    name: "TikZ: Nodes and Paths",
+    source: `\\begin{tikzpicture}[
+  unitary/.style={rectangle, draw=black, fill=white!5, very thick, minimum width=1.5cm, minimum height=.55cm},
+  densm/.style={rectangle, draw=black, fill=white!5, thick, minimum size=.45cm}
+]
+  \\node[unitary] (u1) at (0,0) {$U$};
+  \\coordinate (u1-tl) at ([xshift=-.5cm]u1.north);
+  \\coordinate (u1-tr) at ([xshift=.5cm]u1.north);
+  \\coordinate (u1-bl) at ([xshift=-.5cm]u1.south);
+  \\coordinate (u1-br) at ([xshift=.5cm]u1.south);
+
+  \\node[unitary] (ud1) at ([yshift=1.4cm]u1) {$U^\\dagger$};
+  \\coordinate (ud1-bl) at ([xshift=-.5cm]ud1.south);
+  \\coordinate (ud1-br) at ([xshift=.5cm]ud1.south);
+
+  \\node[densm] (sig) at ([xshift=-1.1cm,yshift=.65cm]u1) {$\\sigma^{1/2}$};
+  \\coordinate (c) at ([xshift=-1.4cm]u1);
+  \\filldraw[black] (c) circle (2pt);
+
+  \\draw[thick] (u1-tl) -- (ud1-bl);
+  \\draw[thick] (u1-tr) -- (ud1-br);
+  \\draw[dashed, thick] (sig.north) |- (ud1-bl);
+  \\draw[->, thick] (c) -| (sig.west);
+\\end{tikzpicture}`
+  },
+  {
+    name: "TikZ: Quantum Sketch",
+    source: `\\begin{tikzpicture}[
+  gate/.style={rectangle, draw=black, fill=white!5, very thick, minimum width=1.6cm, minimum height=.55cm},
+  small/.style={rectangle, draw=black, fill=white!5, thick, minimum size=.35cm}
+]
+  \\node[gate] (U) at (0,0) {$U$};
+  \\node[gate] (N) at ([xshift=1.4cm,yshift=1cm]U) {$\\sqrt{d_C}\\mathcal{E}^{-1/2}(\\sigma)$};
+  \\node[gate] (Ud) at ([yshift=2cm]U) {$U^\\dagger$};
+  \\node[small] (S) at ([xshift=-1.2cm,yshift=.7cm]Ud) {$\\sigma^{1/2}$};
+
+  \\coordinate (A) at ([xshift=-.45cm,yshift=-1cm]U.south);
+  \\coordinate (B) at ([xshift=.45cm,yshift=-1cm]U.south);
+  \\coordinate (dot) at ([xshift=-1.8cm]U);
+
+  \\filldraw[black] (dot) circle (2pt);
+  \\draw[thick] (A) |- ([xshift=-.45cm]U.south);
+  \\draw[thick] (B) |- ([xshift=.45cm]U.south);
+  \\draw[thick] ([xshift=.45cm]U.north) -| (N.south west);
+  \\draw[thick] (N.north west) |- ([xshift=.45cm]Ud.south);
+  \\draw[thick] (dot) -| ([xshift=-.45cm]Ud.south);
+  \\draw[dashed, thick] ([xshift=-.45cm]U.north) -- ([xshift=-.45cm,yshift=.55cm]U.north);
+\\end{tikzpicture}`
+  }
+];
+
 const modes = {
   graph: {
     title: "Rendered Graph",
@@ -690,9 +793,14 @@ const modes = {
     extension: markdown({
       codeLanguages: (info) => {
         const name = info.trim().split(/\s+/)[0];
-        return name === "graphsx" || name === "graphsx-defs" ? jsxLanguage : null;
+        return name === "graphsx" || name === "graphsx-defs" || name === "graphsx-tikz" ? jsxLanguage : null;
       }
     })
+  },
+  tikz: {
+    title: "Rendered TikZ Subset",
+    examples: tikzExamples,
+    extension: []
   },
   liveMarkdown: {
     title: "Live Preview",
@@ -701,7 +809,7 @@ const modes = {
       markdown({
         codeLanguages: (info) => {
           const name = info.trim().split(/\s+/)[0];
-          return name === "graphsx" || name === "graphsx-defs" ? jsxLanguage : null;
+          return name === "graphsx" || name === "graphsx-defs" || name === "graphsx-tikz" ? jsxLanguage : null;
         }
       }),
       graphsxCodeMirrorLivePreview({ katex })
@@ -756,11 +864,13 @@ let editorMode = loadStoredValue("editorMode", currentMode === "docs" ? "graph" 
 let syntaxCollapsed = loadStoredValue("syntaxCollapsed", "false") === "true";
 const modeContent = {
   graph: loadStoredValue("content:graph", loadDraft("graph", graphExamples[0].source)),
+  tikz: loadStoredValue("content:tikz", loadDraft("tikz", tikzExamples[0].source)),
   markdown: loadStoredValue("content:markdown", loadDraft("markdown", markdownExamples[0].source)),
   docs: ""
 };
 const selectedExample = {
   graph: loadStoredValue("example:graph", draftOptionValue),
+  tikz: loadStoredValue("example:tikz", draftOptionValue),
   markdown: loadStoredValue("example:markdown", draftOptionValue),
   docs: draftOptionValue
 };
@@ -810,7 +920,7 @@ editorTab.addEventListener("click", () => {
   populateExamples();
   setEditorText(modeContent[contentKey(currentMode)]);
   render();
-  if (currentMode === "graph") {
+  if (isCanvasMode()) {
     fitToView();
   }
 });
@@ -830,7 +940,7 @@ docsTab.addEventListener("click", () => {
 zoomOut.addEventListener("click", () => setZoom(zoom / zoomStep, canvasCenter()));
 zoomIn.addEventListener("click", () => setZoom(zoom * zoomStep, canvasCenter()));
 zoomReset.addEventListener("click", () => {
-  if (currentMode !== "graph") return;
+  if (!isCanvasMode()) return;
   zoom = 1;
   pan = { x: 0, y: 0 };
   applyViewport();
@@ -842,13 +952,13 @@ syntaxToggle.addEventListener("click", () => {
   storeValue("syntaxCollapsed", String(syntaxCollapsed));
   applySyntaxPaneState();
   requestAnimationFrame(() => {
-    if (currentMode === "graph") {
+    if (isCanvasMode()) {
       fitToView();
     }
   });
 });
 canvas.addEventListener("wheel", (event) => {
-  if (currentMode !== "graph") return;
+  if (!isCanvasMode()) return;
   if (!event.ctrlKey && !event.metaKey) return;
   event.preventDefault();
   const next = event.deltaY > 0 ? zoom / zoomStep : zoom * zoomStep;
@@ -858,7 +968,7 @@ canvas.addEventListener("wheel", (event) => {
   });
 }, { passive: false });
 canvas.addEventListener("pointerdown", (event) => {
-  if (currentMode !== "graph") return;
+  if (!isCanvasMode()) return;
   if (event.button !== 0) return;
   event.preventDefault();
   panStart = {
@@ -895,7 +1005,7 @@ mode.addEventListener("change", () => {
   populateExamples();
   setEditorText(modeContent[contentKey(currentMode)]);
   render();
-  if (currentMode === "graph") {
+  if (isCanvasMode()) {
     fitToView();
   }
 });
@@ -913,7 +1023,7 @@ example.addEventListener("change", () => {
     saveModeContent(key);
     setEditorText(modeContent[key]);
     render();
-    if (currentMode === "graph") {
+    if (isCanvasMode()) {
       fitToView();
     }
     return;
@@ -927,12 +1037,12 @@ example.addEventListener("change", () => {
   saveModeContent(key);
   setEditorText(item.source);
   render();
-  if (currentMode === "graph") {
+  if (isCanvasMode()) {
     fitToView();
   }
 });
 window.addEventListener("resize", () => {
-  if (currentMode === "graph" && !status.classList.contains("error")) {
+  if (isCanvasMode() && !status.classList.contains("error")) {
     fitToView();
   }
 });
@@ -953,6 +1063,10 @@ function render() {
   }
   if (currentMode === "liveMarkdown") {
     renderLiveMarkdownMode();
+    return;
+  }
+  if (currentMode === "tikz") {
+    renderTikzMode();
     return;
   }
   renderGraphMode();
@@ -1001,6 +1115,33 @@ function renderGraphMode() {
     }
     status.textContent = error.message;
     status.classList.add("error");
+  } finally {
+    console.timeEnd(timingLabel);
+  }
+}
+
+function renderTikzMode() {
+  const timingLabel = "GraphSX playground TikZ parse+render";
+  try {
+    console.time(timingLabel);
+    app.classList.remove("live-preview-mode");
+    app.classList.remove("docs-mode");
+    canvas.classList.remove("markdown-mode");
+    docsPane.hidden = true;
+    svg.hidden = false;
+    markdownPreview.hidden = true;
+    zoomControls.hidden = false;
+    renderTitle.textContent = modes.tikz.title;
+    const model = parseTikz(editorText());
+    renderedSize = renderTikz(svg, model, { katex });
+    applyViewport();
+    status.textContent = "TikZ subset parsed successfully";
+    status.classList.remove("error");
+    summary.textContent = tikzSummary(model).text;
+  } catch (error) {
+    status.textContent = error.message;
+    status.classList.add("error");
+    summary.textContent = "";
   } finally {
     console.timeEnd(timingLabel);
   }
@@ -1134,7 +1275,7 @@ function setZoom(value, focus = null) {
 }
 
 function fitToView() {
-  if (currentMode !== "graph") return;
+  if (!isCanvasMode()) return;
   const availableWidth = Math.max(1, canvas.clientWidth - 48);
   const availableHeight = Math.max(1, canvas.clientHeight - 48);
   zoom = clamp(
@@ -1150,7 +1291,7 @@ function fitToView() {
 }
 
 function applyViewport() {
-  if (currentMode !== "graph") return;
+  if (!isCanvasMode()) return;
   svg.style.width = `${renderedSize.width}px`;
   svg.style.height = `${renderedSize.height}px`;
   svg.style.transform = `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`;
@@ -1158,7 +1299,7 @@ function applyViewport() {
 }
 
 function downloadRenderedSvg() {
-  if (currentMode !== "graph" || status.classList.contains("error")) return;
+  if (!isCanvasMode() || status.classList.contains("error")) return;
   const scope = downloadScope.value;
   const exported = scope === "canvas" ? canvasSvgSource() : contentSvgSource();
   const blob = new Blob([exported], { type: "image/svg+xml;charset=utf-8" });
@@ -1170,6 +1311,10 @@ function downloadRenderedSvg() {
   link.click();
   link.remove();
   URL.revokeObjectURL(url);
+}
+
+function isCanvasMode() {
+  return currentMode === "graph" || currentMode === "tikz";
 }
 
 function contentSvgSource() {

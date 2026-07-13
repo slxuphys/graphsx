@@ -6,6 +6,7 @@
   "main": "src/index.js",
   "exports": {
     ".": "./src/index.js",
+    "./tikz": "./src/tikz.js",
     "./codemirror": "./src/codemirror.js",
     "./codemirror.css": "./src/codemirror.css",
     "./markdown.css": "./src/markdown.css"
@@ -21,6 +22,7 @@
     "src/plot-math.js",
     "src/plot-renderer.js",
     "src/renderer.js",
+    "src/tikz.js",
     "src/markdown.js",
     "src/markdown.css",
     "src/codemirror.js",

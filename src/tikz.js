@@ -1,0 +1,753 @@
+import { GraphDslError } from "./errors.js";
+import { normalizeDisplayDefaults } from "./display-defaults.js";
+import { renderGraphDisplayListToSvg } from "./renderer.js";
+
+const DEFAULT_UNIT = 80;
+const DEFAULT_NODE_WIDTH = 72;
+const DEFAULT_NODE_HEIGHT = 42;
+const DEFAULT_CIRCLE_R = 18;
+
+export function parseTikz(source, options = {}) {
+  const clean = stripComments(source);
+  const definitions = parseTikzDefinitions(clean);
+  const body = stripTikzSetBlocks(tikzBody(clean));
+  const model = {
+    type: "tikz",
+    unit: Number(options.unit ?? DEFAULT_UNIT),
+    styles: definitions.styles,
+    pics: definitions.pics,
+    nodes: [],
+    coordinates: [],
+    paths: [],
+    marks: []
+  };
+  const state = {
+    model,
+    anchors: new Map(),
+    picSerial: 0,
+    defaults: normalizeDisplayDefaults(options.defaults)
+  };
+
+  for (const command of parseCommands(body)) {
+    if (command.name === "node") parseNodeCommand(state, command.body);
+    else if (command.name === "coordinate") parseCoordinateCommand(state, command.body);
+    else if (command.name === "draw") parseDrawCommand(state, command.body);
+    else if (command.name === "filldraw") parseFillDrawCommand(state, command.body);
+    else if (command.name === "pic") parsePicCommand(state, command.body);
+  }
+
+  return model;
+}
+
+export function buildTikzDisplayList(model, options = {}) {
+  const defaults = normalizeDisplayDefaults(options.defaults);
+  const items = [];
+  for (const path of model.paths) {
+    items.push({
+      layer: "path",
+      type: "path",
+      props: {
+        className: "tikz-path",
+        fill: "none",
+        stroke: "#111111",
+        strokeWidth: 2,
+        ...path.props
+      },
+      style: path.style
+    });
+  }
+  for (const mark of model.marks) {
+    items.push({
+      layer: "node",
+      type: "circle",
+      props: {
+        className: "tikz-mark",
+        cx: mark.x,
+        cy: mark.y,
+        r: mark.r,
+        fill: mark.fill ?? "#111111",
+        stroke: mark.stroke ?? mark.fill ?? "#111111",
+        strokeWidth: mark.strokeWidth ?? 1
+      },
+      style: mark.style
+    });
+  }
+  for (const node of model.nodes) {
+    if (node.shape === "circle") {
+      items.push({
+        layer: "node",
+        type: "circle",
+        props: {
+          className: "tikz-node",
+          cx: node.x,
+          cy: node.y,
+          r: node.r,
+          fill: node.fill,
+          stroke: node.stroke,
+          strokeWidth: node.strokeWidth
+        },
+        style: node.style
+      });
+    } else if (node.draw) {
+      items.push({
+        layer: "node",
+        type: "rect",
+        props: {
+          className: "tikz-node",
+          x: node.x - node.width / 2,
+          y: node.y - node.height / 2,
+          width: node.width,
+          height: node.height,
+          rx: node.corner ?? 0,
+          fill: node.fill,
+          stroke: node.stroke,
+          strokeWidth: node.strokeWidth
+        },
+        style: node.style
+      });
+    }
+    if (node.label != null && node.label !== "") {
+      const math = parseMath(node.label);
+      const textStyle = {
+        ...(math ? defaults.math : defaults.text),
+        ...(node.textStyle ?? {})
+      };
+      items.push(math
+        ? {
+          layer: "node",
+          type: "math",
+          source: math,
+          x: node.x,
+          y: node.y,
+          className: "tikz-label",
+          anchor: "middle",
+          fontSize: textStyle.fontSize,
+          textStyle
+        }
+        : {
+          layer: "node",
+          type: "text",
+          text: node.label,
+          x: node.x,
+          y: node.y,
+          className: "tikz-label",
+          anchor: "middle",
+          textStyle
+        });
+    }
+  }
+
+  const bounds = displayBounds(items);
+  const viewportPadding = Number(options.viewportPadding ?? 28);
+  const width = Math.max(options.minWidth ?? 0, bounds.maxX - bounds.minX + viewportPadding * 2);
+  const height = Math.max(options.minHeight ?? 0, bounds.maxY - bounds.minY + viewportPadding * 2);
+  const dx = viewportPadding - bounds.minX;
+  const dy = viewportPadding - bounds.minY;
+  const shifted = items.map((item) => shiftItem(item, dx, dy));
+
+  return {
+    type: "tikz",
+    width,
+    height,
+    bounds,
+    arrowMarkers: collectDisplayArrowMarkers(shifted),
+    items: shifted
+  };
+}
+
+export function parseTikzDocument(source, options = {}) {
+  return parseTikz(source, options);
+}
+
+export function renderTikz(svg, sourceOrModel, options = {}) {
+  const model = typeof sourceOrModel === "string" ? parseTikz(sourceOrModel, options) : sourceOrModel;
+  const displayList = buildTikzDisplayList(model, options);
+  return renderTikzDisplayListToSvg(svg, displayList, options);
+}
+
+export function renderTikzDisplayListToSvg(svg, displayList, options = {}) {
+  return renderGraphDisplayListToSvg(svg, displayList, options);
+}
+
+export function tikzSummary(model) {
+  return {
+    nodeCount: model.nodes.length,
+    pathCount: model.paths.length,
+    coordinateCount: model.coordinates.length,
+    text: `${model.nodes.length} ${plural(model.nodes.length, "node")}, ${model.paths.length} ${plural(model.paths.length, "path")}`
+  };
+}
+
+function parseNodeCommand(state, body) {
+  const match = body.match(/^\s*(\[[\s\S]*?\])?\s*\(([^)]+)\)\s*at\s*\(([\s\S]+?)\)\s*\{([\s\S]*)\}\s*$/);
+  if (!match) throw new GraphDslError(`Unsupported TikZ node command: \\node${body};`);
+  const options = parseOptionList(trimBrackets(match[1] ?? ""));
+  const id = scopedName(state, match[2]);
+  const point = resolveCoordinate(state, match[3]);
+  const style = resolveTikzStyle(state.model.styles, options);
+  const label = match[4].trim();
+  const width = style.width ?? DEFAULT_NODE_WIDTH;
+  const height = style.height ?? DEFAULT_NODE_HEIGHT;
+  const node = {
+    id,
+    x: point.x,
+    y: point.y,
+    width,
+    height,
+    r: style.r ?? Math.max(width, height) / 2,
+    shape: style.shape ?? "rect",
+    label,
+    draw: style.draw,
+    fill: style.fill,
+    stroke: style.stroke,
+    strokeWidth: style.strokeWidth,
+    corner: style.corner,
+    textStyle: style.textStyle,
+    style: style.extraStyle
+  };
+  state.model.nodes.push(node);
+  registerNodeAnchors(state, node);
+}
+
+function parseCoordinateCommand(state, body) {
+  const match = body.match(/^\s*\(([^)]+)\)\s*at\s*\(([\s\S]+?)\)\s*$/);
+  if (!match) throw new GraphDslError(`Unsupported TikZ coordinate command: \\coordinate${body};`);
+  const id = scopedName(state, match[1]);
+  const point = resolveCoordinate(state, match[2]);
+  state.model.coordinates.push({ id, ...point });
+  state.anchors.set(id, point);
+  state.anchors.set(`${id}.center`, point);
+}
+
+function parseDrawCommand(state, body) {
+  const { options, rest } = splitCommandOptions(body);
+  const style = resolveTikzStyle(state.model.styles, parseOptionList(options));
+  const tokens = pathTokens(rest);
+  if (tokens.length < 1 || tokens[0].type !== "coord") {
+    throw new GraphDslError(`Unsupported TikZ draw path: \\draw${body};`);
+  }
+  const commands = [];
+  let current = resolveCoordinate(state, tokens[0].value);
+  commands.push({ op: "moveTo", x: current.x, y: current.y });
+  for (let index = 1; index < tokens.length; index += 2) {
+    const op = tokens[index];
+    const coord = tokens[index + 1];
+    if (!op || !coord || op.type !== "op" || coord.type !== "coord") {
+      throw new GraphDslError(`Unsupported TikZ draw path: \\draw${body};`);
+    }
+    const next = resolveCoordinate(state, coord.value);
+    if (op.value === "--") {
+      commands.push({ op: "lineTo", x: next.x, y: next.y });
+    } else if (op.value === "-|") {
+      commands.push({ op: "lineTo", x: next.x, y: current.y }, { op: "lineTo", x: next.x, y: next.y });
+    } else if (op.value === "|-") {
+      commands.push({ op: "lineTo", x: current.x, y: next.y }, { op: "lineTo", x: next.x, y: next.y });
+    }
+    current = next;
+  }
+  state.model.paths.push({
+    props: {
+      commands,
+      stroke: style.stroke,
+      strokeWidth: style.strokeWidth,
+      strokeDasharray: style.strokeDasharray,
+      headArrow: style.headArrow,
+      tailArrow: style.tailArrow,
+      arrowSize: style.arrowSize
+    },
+    style: style.extraStyle
+  });
+}
+
+function parseFillDrawCommand(state, body) {
+  const { options, rest } = splitCommandOptions(body);
+  const style = resolveTikzStyle(state.model.styles, parseOptionList(options));
+  const match = rest.match(/^\s*\(([\s\S]+?)\)\s+circle\s+\(([\s\S]+?)\)/);
+  if (!match) throw new GraphDslError(`Unsupported TikZ filldraw command: \\filldraw${body};`);
+  const point = resolveCoordinate(state, match[1]);
+  state.model.marks.push({
+    ...point,
+    r: lengthToPx(match[2], state.model.unit),
+    fill: style.fill === "none" ? style.stroke : style.fill,
+    stroke: style.stroke,
+    strokeWidth: style.strokeWidth,
+    style: style.extraStyle
+  });
+}
+
+function parsePicCommand(state, body) {
+  const match = body.match(/^\s*(?:\(([^)]+)\)\s*)?at\s*\(([\s\S]+?)\)\s*\{([\s\S]+?)\}\s*$/);
+  if (!match) throw new GraphDslError(`Unsupported TikZ pic command: \\pic${body};`);
+  const prefix = match[1] ? normalizeName(match[1]) : `pic${++state.picSerial}`;
+  const origin = resolveCoordinate(state, match[2]);
+  const name = match[3].trim();
+  const source = state.model.pics.get(name);
+  if (source == null) {
+    throw new GraphDslError(`Unknown TikZ pic "${name}"`);
+  }
+  const scoped = {
+    ...state,
+    scope: {
+      prefix,
+      origin
+    }
+  };
+  for (const command of parseCommands(source)) {
+    if (command.name === "node") parseNodeCommand(scoped, command.body);
+    else if (command.name === "coordinate") parseCoordinateCommand(scoped, command.body);
+    else if (command.name === "draw") parseDrawCommand(scoped, command.body);
+    else if (command.name === "filldraw") parseFillDrawCommand(scoped, command.body);
+    else if (command.name === "pic") parsePicCommand(scoped, command.body);
+  }
+}
+
+function parseTikzDefinitions(source) {
+  const styles = new Map();
+  const pics = new Map();
+  const begin = source.match(/\\begin\{tikzpicture\}\s*(\[[\s\S]*?\])?/);
+  if (begin?.[1]) {
+    parseDefinitionEntries(trimBrackets(begin[1]), styles, pics);
+  }
+  for (const block of tikzSetBlocks(source)) {
+    parseDefinitionEntries(block, styles, pics);
+  }
+  return { styles, pics };
+}
+
+function parseDefinitionEntries(source, styles, pics) {
+  for (const entry of splitTopLevel(source, ",")) {
+    const match = entry.match(/^\s*(.+?)\s*\/\.(style|pic)\s*=\s*\{([\s\S]*)\}\s*$/);
+    if (!match) continue;
+    const name = match[1].trim();
+    if (match[2] === "style") {
+      styles.set(name, parseOptionList(match[3]));
+    } else {
+      pics.set(name, match[3].trim());
+    }
+  }
+}
+
+function tikzBody(source) {
+  const begin = source.match(/\\begin\{tikzpicture\}(?:\[[\s\S]*?\])?/);
+  const end = source.match(/\\end\{tikzpicture\}/);
+  if (!begin || !end || end.index < begin.index) {
+    return source;
+  }
+  return source.slice(begin.index + begin[0].length, end.index);
+}
+
+function tikzSetBlocks(source) {
+  const blocks = [];
+  const pattern = /\\tikzset\s*\{/g;
+  let match = pattern.exec(source);
+  while (match) {
+    const open = pattern.lastIndex - 1;
+    const close = findMatching(source, open, "{", "}");
+    if (close < 0) throw new GraphDslError(`Unclosed TikZ \\tikzset block`);
+    blocks.push(source.slice(open + 1, close));
+    pattern.lastIndex = close + 1;
+    match = pattern.exec(source);
+  }
+  return blocks;
+}
+
+function stripTikzSetBlocks(source) {
+  let result = "";
+  let cursor = 0;
+  const pattern = /\\tikzset\s*\{/g;
+  let match = pattern.exec(source);
+  while (match) {
+    const open = pattern.lastIndex - 1;
+    const close = findMatching(source, open, "{", "}");
+    if (close < 0) throw new GraphDslError(`Unclosed TikZ \\tikzset block`);
+    result += source.slice(cursor, match.index);
+    cursor = close + 1;
+    pattern.lastIndex = close + 1;
+    match = pattern.exec(source);
+  }
+  return result + source.slice(cursor);
+}
+
+function parseCommands(source) {
+  const commands = [];
+  const pattern = /\\(node|coordinate|draw|filldraw|pic)\b/g;
+  let match = pattern.exec(source);
+  while (match) {
+    const start = pattern.lastIndex;
+    const end = findCommandEnd(source, start);
+    if (end < 0) throw new GraphDslError(`Unclosed TikZ command \\${match[1]}`);
+    commands.push({ name: match[1], body: source.slice(start, end).trim() });
+    pattern.lastIndex = end + 1;
+    match = pattern.exec(source);
+  }
+  return commands;
+}
+
+function findCommandEnd(source, start) {
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  let parenDepth = 0;
+  for (let i = start; i < source.length; i += 1) {
+    const char = source[i];
+    if (char === "{") braceDepth += 1;
+    else if (char === "}") braceDepth -= 1;
+    else if (char === "[") bracketDepth += 1;
+    else if (char === "]") bracketDepth -= 1;
+    else if (char === "(") parenDepth += 1;
+    else if (char === ")") parenDepth -= 1;
+    else if (char === ";" && braceDepth === 0 && bracketDepth === 0 && parenDepth === 0) return i;
+  }
+  return -1;
+}
+
+function resolveTikzStyle(styles, options) {
+  const merged = [];
+  for (const option of options) {
+    if (styles.has(option.key)) {
+      merged.push(...styles.get(option.key));
+    }
+    merged.push(option);
+  }
+  const style = {
+    shape: "rect",
+    draw: false,
+    fill: "none",
+    stroke: "#111111",
+    strokeWidth: 1.5,
+    textStyle: {}
+  };
+  for (const option of merged) {
+    const key = option.key;
+    const value = option.value;
+    if (key === "rectangle") style.shape = "rect";
+    else if (key === "circle") style.shape = "circle";
+    else if (key === "draw") {
+      style.draw = true;
+      if (value) style.stroke = tikzColor(value);
+    } else if (key === "fill") {
+      style.fill = tikzColor(value ?? "black");
+    } else if (key === "thick") style.strokeWidth = 2.4;
+    else if (key === "very thick") style.strokeWidth = 3.2;
+    else if (key === "ultra thick") style.strokeWidth = 4;
+    else if (key === "dashed") style.strokeDasharray = "6 5";
+    else if (key === "->" || key === "stealth") style.headArrow = true;
+    else if (key === "<-") style.tailArrow = true;
+    else if (key === "<->") {
+      style.headArrow = true;
+      style.tailArrow = true;
+    } else if (key === "minimum width") style.width = lengthToPx(value, DEFAULT_UNIT);
+    else if (key === "minimum height") style.height = lengthToPx(value, DEFAULT_UNIT);
+    else if (key === "minimum size") {
+      style.width = lengthToPx(value, DEFAULT_UNIT);
+      style.height = lengthToPx(value, DEFAULT_UNIT);
+    } else if (key === "rounded corners") style.corner = value ? lengthToPx(value, DEFAULT_UNIT) : 6;
+    else if (isColorKeyword(key)) style.textStyle.fill = tikzColor(key);
+  }
+  if (style.shape === "circle" && (style.width || style.height)) {
+    style.r = Math.max(style.width ?? 0, style.height ?? 0, DEFAULT_CIRCLE_R * 2) / 2;
+  }
+  if (style.draw && style.fill === "none") style.fill = "#ffffff";
+  return style;
+}
+
+function resolveCoordinate(state, raw) {
+  const source = raw.trim();
+  const shifted = source.match(/^\s*\[([\s\S]*?)\]\s*([\s\S]+)$/);
+  if (shifted) {
+    const base = resolveCoordinate(state, shifted[2]);
+    const shifts = parseOptionList(shifted[1]);
+    const xShift = shifts.find((item) => item.key === "xshift")?.value;
+    const yShift = shifts.find((item) => item.key === "yshift")?.value;
+    return {
+      x: base.x + lengthToPx(xShift ?? 0, state.model.unit),
+      y: base.y - lengthToPx(yShift ?? 0, state.model.unit)
+    };
+  }
+  const pair = source.match(/^([+-]?(?:\d+\.?\d*|\.\d+))\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+))$/);
+  if (pair) {
+    const origin = state.scope?.origin ?? { x: 0, y: 0 };
+    return {
+      x: origin.x + Number(pair[1]) * state.model.unit,
+      y: origin.y - Number(pair[2]) * state.model.unit
+    };
+  }
+  const name = scopedReferenceName(state, source);
+  const point = state.anchors.get(name);
+  if (!point) throw new GraphDslError(`Unknown TikZ coordinate "${source}"`);
+  return { x: point.x, y: point.y };
+}
+
+function scopedName(state, raw) {
+  const name = normalizeName(raw);
+  if (!state.scope || !name.startsWith("-")) return name;
+  return `${state.scope.prefix}${name}`;
+}
+
+function scopedReferenceName(state, raw) {
+  const name = normalizeName(raw);
+  if (!state.scope || !name.startsWith("-")) return name;
+  return `${state.scope.prefix}${name}`;
+}
+
+function registerNodeAnchors(state, node) {
+  const left = node.x - node.width / 2;
+  const right = node.x + node.width / 2;
+  const top = node.y - node.height / 2;
+  const bottom = node.y + node.height / 2;
+  const anchors = {
+    center: { x: node.x, y: node.y },
+    north: { x: node.x, y: top },
+    south: { x: node.x, y: bottom },
+    east: { x: right, y: node.y },
+    west: { x: left, y: node.y },
+    "north east": { x: right, y: top },
+    "north west": { x: left, y: top },
+    "south east": { x: right, y: bottom },
+    "south west": { x: left, y: bottom }
+  };
+  state.anchors.set(node.id, anchors.center);
+  for (const [name, point] of Object.entries(anchors)) {
+    state.anchors.set(`${node.id}.${name}`, point);
+  }
+}
+
+function pathTokens(source) {
+  const tokens = [];
+  let index = 0;
+  while (index < source.length) {
+    if (/\s/.test(source[index])) {
+      index += 1;
+      continue;
+    }
+    const op = source.slice(index).match(/^(--|\|--?|\|-|-\|)/);
+    if (op) {
+      const value = op[1] === "|--" ? "|-" : op[1];
+      tokens.push({ type: "op", value });
+      index += op[1].length;
+      continue;
+    }
+    if (source[index] === "(") {
+      const end = findMatching(source, index, "(", ")");
+      if (end < 0) throw new GraphDslError(`Unclosed TikZ coordinate in path`);
+      tokens.push({ type: "coord", value: source.slice(index + 1, end) });
+      index = end + 1;
+      continue;
+    }
+    index += 1;
+  }
+  return tokens;
+}
+
+function splitCommandOptions(body) {
+  const trimmed = body.trim();
+  if (!trimmed.startsWith("[")) return { options: "", rest: trimmed };
+  const end = findMatching(trimmed, 0, "[", "]");
+  if (end < 0) throw new GraphDslError(`Unclosed TikZ option list`);
+  return {
+    options: trimmed.slice(1, end),
+    rest: trimmed.slice(end + 1).trim()
+  };
+}
+
+function parseOptionList(source = "") {
+  return splitTopLevel(source, ",").map((raw) => {
+    const text = raw.trim();
+    if (!text) return null;
+    const eq = text.indexOf("=");
+    if (eq >= 0) {
+      return { key: text.slice(0, eq).trim(), value: text.slice(eq + 1).trim() };
+    }
+    return { key: text, value: true };
+  }).filter(Boolean);
+}
+
+function splitTopLevel(source, separator) {
+  const parts = [];
+  let start = 0;
+  let braceDepth = 0;
+  let bracketDepth = 0;
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    if (char === "{") braceDepth += 1;
+    else if (char === "}") braceDepth -= 1;
+    else if (char === "[") bracketDepth += 1;
+    else if (char === "]") bracketDepth -= 1;
+    else if (char === separator && braceDepth === 0 && bracketDepth === 0) {
+      parts.push(source.slice(start, i));
+      start = i + 1;
+    }
+  }
+  parts.push(source.slice(start));
+  return parts;
+}
+
+function displayBounds(items) {
+  const bounds = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const item of items) {
+    if (item.type === "rect") includeRect(bounds, item.props.x, item.props.y, item.props.width, item.props.height);
+    else if (item.type === "circle") includeRect(bounds, item.props.cx - item.props.r, item.props.cy - item.props.r, item.props.r * 2, item.props.r * 2);
+    else if (item.type === "path") {
+      for (const command of item.props.commands ?? []) {
+        if ("x" in command && "y" in command) includePoint(bounds, command.x, command.y);
+        if ("x1" in command && "y1" in command) includePoint(bounds, command.x1, command.y1);
+        if ("x2" in command && "y2" in command) includePoint(bounds, command.x2, command.y2);
+      }
+    } else if (item.type === "text" || item.type === "math") {
+      includeRect(bounds, item.x - 24, item.y - 14, 48, 28);
+    }
+  }
+  if (!Number.isFinite(bounds.minX)) return { minX: 0, minY: 0, maxX: 1, maxY: 1 };
+  return bounds;
+}
+
+function shiftItem(item, dx, dy) {
+  if (item.type === "rect") {
+    return { ...item, props: { ...item.props, x: item.props.x + dx, y: item.props.y + dy } };
+  }
+  if (item.type === "circle") {
+    return { ...item, props: { ...item.props, cx: item.props.cx + dx, cy: item.props.cy + dy } };
+  }
+  if (item.type === "path") {
+    return {
+      ...item,
+      props: {
+        ...item.props,
+        commands: item.props.commands.map((command) => shiftCommand(command, dx, dy))
+      }
+    };
+  }
+  if (item.type === "text" || item.type === "math") {
+    return { ...item, x: item.x + dx, y: item.y + dy };
+  }
+  return item;
+}
+
+function shiftCommand(command, dx, dy) {
+  const next = { ...command };
+  if ("x" in next) next.x += dx;
+  if ("y" in next) next.y += dy;
+  if ("x1" in next) next.x1 += dx;
+  if ("y1" in next) next.y1 += dy;
+  if ("x2" in next) next.x2 += dx;
+  if ("y2" in next) next.y2 += dy;
+  return next;
+}
+
+function collectDisplayArrowMarkers(items) {
+  const keys = new Set();
+  for (const item of items) {
+    const props = item.props ?? {};
+    if (props.headArrow || props.tailArrow) {
+      keys.add(String(Number(props.arrowSize ?? 12)).replace(/\./g, "_"));
+    }
+  }
+  return keys;
+}
+
+function includeRect(bounds, x, y, width, height) {
+  includePoint(bounds, x, y);
+  includePoint(bounds, x + width, y + height);
+}
+
+function includePoint(bounds, x, y) {
+  bounds.minX = Math.min(bounds.minX, x);
+  bounds.minY = Math.min(bounds.minY, y);
+  bounds.maxX = Math.max(bounds.maxX, x);
+  bounds.maxY = Math.max(bounds.maxY, y);
+}
+
+function lengthToPx(value, unit) {
+  if (value == null || value === true || value === "") return 0;
+  if (typeof value === "number") return value * unit;
+  const text = String(value).trim();
+  const match = text.match(/^([+-]?(?:\d+\.?\d*|\.\d+))\s*(cm|mm|pt|px)?$/);
+  if (!match) return Number(text) || 0;
+  const number = Number(match[1]);
+  const suffix = match[2] ?? "cm";
+  if (suffix === "px") return number;
+  if (suffix === "pt") return number * 1.3333333333;
+  if (suffix === "mm") return number * unit / 10;
+  return number * unit;
+}
+
+function tikzColor(value) {
+  const text = String(value ?? "black").trim();
+  const mix = text.match(/^([A-Za-z]+)!(\d+)$/);
+  if (mix) {
+    const color = namedColor(mix[1]);
+    const amount = Number(mix[2]) / 100;
+    return mixColor(color, "#ffffff", amount);
+  }
+  return namedColor(text);
+}
+
+function namedColor(name) {
+  const colors = {
+    black: "#111111",
+    white: "#ffffff",
+    blue: "#2563eb",
+    red: "#dc2626",
+    green: "#16a34a",
+    gray: "#6b7280",
+    grey: "#6b7280",
+    yellow: "#facc15",
+    orange: "#f97316",
+    purple: "#7c3aed"
+  };
+  return colors[name] ?? name;
+}
+
+function mixColor(color, base, amount) {
+  const a = hexToRgb(color);
+  const b = hexToRgb(base);
+  if (!a || !b) return color;
+  const rgb = a.map((value, index) => Math.round(value * amount + b[index] * (1 - amount)));
+  return `#${rgb.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function hexToRgb(value) {
+  const match = String(value).match(/^#([0-9a-f]{6})$/i);
+  if (!match) return null;
+  return [0, 2, 4].map((index) => parseInt(match[1].slice(index, index + 2), 16));
+}
+
+function isColorKeyword(key) {
+  return ["black", "white", "blue", "red", "green", "gray", "grey", "yellow", "orange", "purple"].includes(key);
+}
+
+function parseMath(label) {
+  const trimmed = label.trim();
+  return trimmed.startsWith("$") && trimmed.endsWith("$") ? trimmed.slice(1, -1) : null;
+}
+
+function trimBrackets(value) {
+  const text = String(value ?? "").trim();
+  return text.startsWith("[") && text.endsWith("]") ? text.slice(1, -1) : text;
+}
+
+function normalizeName(value) {
+  return String(value).trim().replace(/\s+/g, " ");
+}
+
+function findMatching(source, start, open, close) {
+  let depth = 0;
+  for (let i = start; i < source.length; i += 1) {
+    if (source[i] === open) depth += 1;
+    else if (source[i] === close) {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function stripComments(source) {
+  return String(source).split(/\r?\n/).map((line) => {
+    const index = line.search(/(?<!\\)%/);
+    return index >= 0 ? line.slice(0, index) : line;
+  }).join("\n");
+}
+
+function plural(count, singular) {
+  return count === 1 ? singular : `${singular}s`;
+}
