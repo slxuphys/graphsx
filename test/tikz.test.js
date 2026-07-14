@@ -172,6 +172,32 @@ test("maps TikZ line thickness keywords", () => {
   ]);
 });
 
+test("maps TikZ line colors and dash appearance keywords", () => {
+  const model = parseTikz(`
+    \\draw[blue, dotted, thick] (0,0) -- (1,0);
+    \\draw[loosely dotted] (0,0) -- (1,0);
+    \\draw[densely dotted] (0,0) -- (1,0);
+    \\draw[dashed] (0,0) -- (1,0);
+    \\draw[loosely dashed] (0,0) -- (1,0);
+    \\draw[densely dashed] (0,0) -- (1,0);
+  `, {
+    units: {
+      pt: 2
+    }
+  });
+
+  assert.equal(model.paths[0].props.stroke, "#2563eb");
+  assert.equal(model.paths[0].props.strokeWidth, 0.8);
+  assert.deepEqual(model.paths.map((path) => path.props.strokeDasharray), [
+    "2 4",
+    "2 8",
+    "2 2",
+    "6 6",
+    "6 12",
+    "6 3"
+  ]);
+});
+
 test("supports TikZ unit scales for cm and pt", () => {
   const model = parseTikz(`
     \\node[rectangle, draw=black, minimum width=1cm, inner sep=3pt] (A) at (2,0) {A};

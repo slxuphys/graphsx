@@ -21,6 +21,14 @@ const TIKZ_LINE_WIDTHS = {
   "very thick": 1.2,
   "ultra thick": 1.6
 };
+const TIKZ_DASH_PATTERNS = {
+  dotted: [1, 2],
+  "loosely dotted": [1, 4],
+  "densely dotted": [1, 1],
+  dashed: [3, 3],
+  "loosely dashed": [3, 6],
+  "densely dashed": [3, 1.5]
+};
 
 export function parseTikz(source, options = {}) {
   const clean = stripComments(source);
@@ -518,7 +526,7 @@ function resolveTikzStyle(styles, options, units = DEFAULT_TIKZ_UNITS) {
     } else if (key === "fill") {
       style.fill = tikzColor(value ?? "black");
     } else if (Object.hasOwn(TIKZ_LINE_WIDTHS, key)) style.strokeWidth = TIKZ_LINE_WIDTHS[key];
-    else if (key === "dashed") style.strokeDasharray = "6 5";
+    else if (Object.hasOwn(TIKZ_DASH_PATTERNS, key)) style.strokeDasharray = dashPatternToStrokeDasharray(TIKZ_DASH_PATTERNS[key], units);
     else if (key === "->" || key === "stealth") style.headArrow = true;
     else if (key === "<-") style.tailArrow = true;
     else if (key === "<->") {
@@ -531,13 +539,21 @@ function resolveTikzStyle(styles, options, units = DEFAULT_TIKZ_UNITS) {
       style.height = lengthToPx(value, units);
     } else if (key === "inner sep") style.innerSep = lengthToPx(value ?? "3pt", units);
     else if (key === "rounded corners") style.corner = value ? lengthToPx(value, units) : 6;
-    else if (isColorKeyword(key)) style.textStyle.fill = tikzColor(key);
+    else if (isColorKeyword(key)) {
+      const color = tikzColor(key);
+      style.stroke = color;
+      style.textStyle.fill = color;
+    }
   }
   if (style.shape === "circle" && (style.width || style.height)) {
     style.r = Math.max(style.width ?? 0, style.height ?? 0, DEFAULT_CIRCLE_R * 2) / 2;
   }
   if (style.draw && style.fill === "none") style.fill = "#ffffff";
   return style;
+}
+
+function dashPatternToStrokeDasharray(pattern, units) {
+  return pattern.map((value) => formatNumber(value * normalizeLengthUnits(units).pt)).join(" ");
 }
 
 function resolveCoordinate(state, raw) {
@@ -883,6 +899,10 @@ function normalizeLengthUnits(units) {
 function positiveNumber(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : fallback;
+}
+
+function formatNumber(value) {
+  return Number(Number(value).toFixed(6)).toString();
 }
 
 function tikzColor(value) {
