@@ -52,6 +52,7 @@ export {
 export {
   parseTikz,
   parseTikzDocument,
+  resolveTikzLayout,
   buildTikzDisplayList,
   renderTikz,
   renderTikzDisplayListToSvg,

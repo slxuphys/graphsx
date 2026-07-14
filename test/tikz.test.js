@@ -4,6 +4,7 @@ import {
   buildTikzDisplayList,
   parseTikz,
   renderTikz,
+  resolveTikzLayout,
   tikzSummary
 } from "../src/index.js";
 
@@ -42,6 +43,36 @@ test("builds a TikZ display list renderable by the SVG backend", () => {
   assert.ok(displayList.items.some((item) => item.type === "rect"));
   assert.ok(displayList.items.some((item) => item.type === "path" && item.props.headArrow));
   assert.ok(displayList.arrowMarkers.has("12"));
+});
+
+test("supports anonymous TikZ nodes without registering source anchors", () => {
+  const model = parseTikz(`
+    \\node at (0,0) {$A$};
+    \\node[rectangle, draw=black] at (1,0) {B};
+  `);
+  const displayList = buildTikzDisplayList(model, { minWidth: 0, minHeight: 0, viewportPadding: 0 });
+
+  assert.equal(model.nodes.length, 2);
+  assert.equal(model.nodes[0].anonymous, true);
+  assert.equal(model.nodes[0].id, "__tikz_node_1");
+  assert.equal(model.nodes[1].anonymous, true);
+  assert.equal(model.nodes[1].id, "__tikz_node_2");
+  assert.ok(displayList.items.some((item) => item.type === "math" && item.source === "A"));
+  assert.ok(displayList.items.some((item) => item.type === "rect"));
+  assert.throws(
+    () => parseTikz(`
+      \\node at (0,0) {$A$};
+      \\draw (__tikz_node_1.east) -- (1,0);
+    `),
+    /Unknown TikZ coordinate "__tikz_node_1\.east"/
+  );
+});
+
+test("rejects empty TikZ node names", () => {
+  assert.throws(
+    () => parseTikz(`\\node () at (0,0) {$A$};`),
+    /Unsupported TikZ node command/
+  );
 });
 
 test("expands reusable TikZ pics with local coordinates", () => {
@@ -149,6 +180,31 @@ test("keeps unit as a backwards-compatible TikZ cm scale alias", () => {
   assert.equal(model.nodes[0].width, 50);
 });
 
+test("supports TikZ unit scales for cm and pt", () => {
+  const model = parseTikz(`
+    \\node[rectangle, draw=black, minimum width=1cm, inner sep=3pt] (A) at (2,0) {A};
+    \\coordinate (B) at ([xshift=10pt]A.east);
+  `, {
+    units: {
+      cm: 50,
+      pt: 2
+    }
+  });
+  const resolved = resolveTikzLayout(model, {
+    measure: {
+      text() {
+        return { width: 10, height: 10 };
+      }
+    }
+  });
+
+  assert.equal(model.cmToPx, 50);
+  assert.deepEqual(model.units, { cm: 50, mm: 5, pt: 2, px: 1 });
+  assert.equal(resolved.nodes[0].width, 50);
+  assert.equal(resolved.nodes[0].innerSep, 6);
+  assert.deepEqual(resolved.coordinates[0], { id: "B", x: 145, y: 0 });
+});
+
 test("uses host math measurements for TikZ display bounds", () => {
   const model = parseTikz(`\\node (A) at (0,0) {$abcdefghij$};`);
   const display = buildTikzDisplayList(model, {
@@ -167,6 +223,46 @@ test("uses host math measurements for TikZ display bounds", () => {
   assert.equal(display.width, 200);
   assert.equal(display.height, 40);
   assert.deepEqual(label.box, { x: 0, y: 0, width: 200, height: 40 });
+});
+
+test("uses measured TikZ node boxes for anchors and paths", () => {
+  const model = parseTikz(`
+    \\node (T) at (0,0) {$A$};
+    \\draw (T.east) -- (2,0);
+  `);
+  const resolved = resolveTikzLayout(model, {
+    measure: {
+      math(source) {
+        assert.equal(source, "A");
+        return { width: 40, height: 20 };
+      }
+    }
+  });
+  const node = resolved.nodes[0];
+  const commands = resolved.paths[0].props.commands;
+
+  assert.equal(node.width, 48);
+  assert.equal(node.height, 28);
+  assert.deepEqual(commands[0], { op: "moveTo", x: 24, y: 0 });
+  assert.deepEqual(commands[1], { op: "lineTo", x: 160, y: 0 });
+});
+
+test("parses TikZ inner sep for measured node anchors", () => {
+  const model = parseTikz(`
+    \\node[inner sep=10pt] (T) at (0,0) {$A$};
+    \\draw (T.east) -- (2,0);
+  `);
+  const resolved = resolveTikzLayout(model, {
+    measure: {
+      math() {
+        return { width: 40, height: 20 };
+      }
+    }
+  });
+
+  assert.equal(Math.round(resolved.nodes[0].innerSep * 1000) / 1000, 13.333);
+  assert.equal(Math.round(resolved.nodes[0].width * 1000) / 1000, 66.667);
+  assert.equal(Math.round(resolved.paths[0].props.commands[0].x * 1000) / 1000, 33.333);
 });
 
 test("renders TikZ subset to SVG", () => {

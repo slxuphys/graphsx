@@ -7,6 +7,11 @@ const DEFAULT_CM_TO_PX = 80;
 const DEFAULT_NODE_WIDTH = 72;
 const DEFAULT_NODE_HEIGHT = 42;
 const DEFAULT_CIRCLE_R = 18;
+const DEFAULT_INNER_SEP = 4;
+const DEFAULT_TIKZ_UNITS = {
+  cm: DEFAULT_CM_TO_PX,
+  pt: 1.3333333333
+};
 const TIKZ_LINE_WIDTHS = {
   "ultra thin": 0.1,
   "very thin": 0.2,
@@ -22,11 +27,14 @@ export function parseTikz(source, options = {}) {
   const definitions = parseTikzDefinitions(clean);
   const body = stripTikzSetBlocks(tikzBody(clean));
   const cmToPx = Number(options.cmToPx ?? options.unit ?? DEFAULT_CM_TO_PX);
+  const units = normalizeTikzUnits(options, cmToPx);
   const model = {
     type: "tikz",
-    cmToPx,
+    cmToPx: units.cm,
+    units,
     styles: definitions.styles,
     pics: definitions.pics,
+    elements: [],
     nodes: [],
     coordinates: [],
     paths: [],
@@ -53,8 +61,9 @@ export function parseTikz(source, options = {}) {
 export function buildTikzDisplayList(model, options = {}) {
   const defaults = normalizeDisplayDefaults(options.defaults);
   const measure = normalizeDisplayMeasure(options);
+  const resolvedModel = resolveTikzLayout(model, options);
   const items = [];
-  for (const path of model.paths) {
+  for (const path of resolvedModel.paths) {
     items.push({
       layer: "path",
       type: "path",
@@ -68,7 +77,7 @@ export function buildTikzDisplayList(model, options = {}) {
       style: path.style
     });
   }
-  for (const mark of model.marks) {
+  for (const mark of resolvedModel.marks) {
     items.push({
       layer: "node",
       type: "circle",
@@ -84,7 +93,7 @@ export function buildTikzDisplayList(model, options = {}) {
       style: mark.style
     });
   }
-  for (const node of model.nodes) {
+  for (const node of resolvedModel.nodes) {
     if (node.shape === "circle") {
       items.push({
         layer: "node",
@@ -125,18 +134,18 @@ export function buildTikzDisplayList(model, options = {}) {
         ...(node.textStyle ?? {})
       };
       const box = math
-        ? mathLabelBox(math, textStyle, measure, {
+        ? (node.labelBox ?? mathLabelBox(math, textStyle, measure, {
           x: node.x,
           y: node.y,
           anchor: "middle",
           fontSize: textStyle.fontSize
-        })
-        : textLabelBox(node.label, textStyle, measure, {
+        }))
+        : (node.labelBox ?? textLabelBox(node.label, textStyle, measure, {
           x: node.x,
           y: node.y,
           anchor: "middle",
           fontSize: textStyle.fontSize
-        });
+        }));
       items.push(math
         ? {
           layer: "node",
@@ -182,6 +191,57 @@ export function buildTikzDisplayList(model, options = {}) {
   };
 }
 
+export function resolveTikzLayout(model, options = {}) {
+  const defaults = normalizeDisplayDefaults(options.defaults);
+  const measure = normalizeDisplayMeasure(options);
+  const resolved = {
+    ...model,
+    nodes: [],
+    coordinates: [],
+    paths: [],
+    marks: []
+  };
+  const state = {
+    model,
+    anchors: new Map()
+  };
+  const elements = model.elements?.length
+    ? model.elements
+    : [
+      ...model.nodes.map((item) => ({ type: "node", item })),
+      ...model.coordinates.map((item) => ({ type: "coordinate", item }))
+    ];
+
+  for (const element of elements) {
+    if (element.type === "node") {
+      const node = resolveNodeLayout(state, element.item, defaults, measure);
+      resolved.nodes.push(node);
+      if (!node.anonymous) registerNodeAnchors(state, node);
+    } else if (element.type === "coordinate") {
+      const coordinate = {
+        ...element.item,
+        ...resolveCoordinate(stateWithScope(state, element.item.scope), element.item.rawAt ?? `${element.item.x},${element.item.y}`)
+      };
+      resolved.coordinates.push(coordinate);
+      state.anchors.set(coordinate.id, { x: coordinate.x, y: coordinate.y });
+      state.anchors.set(`${coordinate.id}.center`, { x: coordinate.x, y: coordinate.y });
+    }
+  }
+
+  for (const mark of model.marks) {
+    const point = resolveCoordinate(stateWithScope(state, mark.scope), mark.rawAt ?? `${mark.x},${mark.y}`);
+    resolved.marks.push({
+      ...mark,
+      ...point,
+      r: mark.rawR != null ? lengthToPx(mark.rawR, model.units) : mark.r
+    });
+  }
+  for (const path of model.paths) {
+    resolved.paths.push(resolvePathLayout(state, path));
+  }
+  return resolved;
+}
+
 export function parseTikzDocument(source, options = {}) {
   return parseTikz(source, options);
 }
@@ -206,21 +266,31 @@ export function tikzSummary(model) {
 }
 
 function parseNodeCommand(state, body) {
-  const match = body.match(/^\s*(\[[\s\S]*?\])?\s*\(([^)]+)\)\s*at\s*\(([\s\S]+?)\)\s*\{([\s\S]*)\}\s*$/);
+  const match = body.match(/^\s*(\[[\s\S]*?\])?\s*(?:\(([^)]*)\)\s*)?at\s*\(([\s\S]+?)\)\s*\{([\s\S]*)\}\s*$/);
   if (!match) throw new GraphDslError(`Unsupported TikZ node command: \\node${body};`);
   const options = parseOptionList(trimBrackets(match[1] ?? ""));
-  const id = scopedName(state, match[2]);
+  const rawId = match[2];
+  if (rawId != null && rawId.trim() === "") {
+    throw new GraphDslError(`Unsupported TikZ node command: \\node${body};`);
+  }
+  const anonymous = rawId == null;
+  const id = anonymous ? `__tikz_node_${state.model.nodes.length + 1}` : scopedName(state, rawId);
   const point = resolveCoordinate(state, match[3]);
-  const style = resolveTikzStyle(state.model.styles, options, state.model.cmToPx);
+  const style = resolveTikzStyle(state.model.styles, options, state.model.units);
   const label = match[4].trim();
   const width = style.width ?? DEFAULT_NODE_WIDTH;
   const height = style.height ?? DEFAULT_NODE_HEIGHT;
   const node = {
     id,
+    anonymous,
+    rawAt: match[3],
+    scope: cloneScope(state.scope),
     x: point.x,
     y: point.y,
     width,
     height,
+    minWidth: style.width,
+    minHeight: style.height,
     r: style.r ?? Math.max(width, height) / 2,
     shape: style.shape ?? "rect",
     label,
@@ -229,11 +299,14 @@ function parseNodeCommand(state, body) {
     stroke: style.stroke,
     strokeWidth: style.strokeWidth,
     corner: style.corner,
+    innerSep: style.innerSep,
     textStyle: style.textStyle,
     style: style.extraStyle
   };
+  hideInternal(node, ["rawAt", "scope"]);
   state.model.nodes.push(node);
-  registerNodeAnchors(state, node);
+  state.model.elements.push({ type: "node", item: node });
+  if (!anonymous) registerNodeAnchors(state, node);
 }
 
 function parseCoordinateCommand(state, body) {
@@ -241,40 +314,26 @@ function parseCoordinateCommand(state, body) {
   if (!match) throw new GraphDslError(`Unsupported TikZ coordinate command: \\coordinate${body};`);
   const id = scopedName(state, match[1]);
   const point = resolveCoordinate(state, match[2]);
-  state.model.coordinates.push({ id, ...point });
+  const coordinate = { id, rawAt: match[2], scope: cloneScope(state.scope), ...point };
+  hideInternal(coordinate, ["rawAt", "scope"]);
+  state.model.coordinates.push(coordinate);
+  state.model.elements.push({ type: "coordinate", item: coordinate });
   state.anchors.set(id, point);
   state.anchors.set(`${id}.center`, point);
 }
 
 function parseDrawCommand(state, body) {
   const { options, rest } = splitCommandOptions(body);
-  const style = resolveTikzStyle(state.model.styles, parseOptionList(options), state.model.cmToPx);
+  const style = resolveTikzStyle(state.model.styles, parseOptionList(options), state.model.units);
   const tokens = pathTokens(rest);
   if (tokens.length < 1 || tokens[0].type !== "coord") {
     throw new GraphDslError(`Unsupported TikZ draw path: \\draw${body};`);
   }
-  const commands = [];
-  let current = resolveCoordinate(state, tokens[0].value);
-  commands.push({ op: "moveTo", x: current.x, y: current.y });
-  for (let index = 1; index < tokens.length; index += 2) {
-    const op = tokens[index];
-    const coord = tokens[index + 1];
-    if (!op || !coord || op.type !== "op" || coord.type !== "coord") {
-      throw new GraphDslError(`Unsupported TikZ draw path: \\draw${body};`);
-    }
-    const next = resolveCoordinate(state, coord.value);
-    if (op.value === "--") {
-      commands.push({ op: "lineTo", x: next.x, y: next.y });
-    } else if (op.value === "-|") {
-      commands.push({ op: "lineTo", x: next.x, y: current.y }, { op: "lineTo", x: next.x, y: next.y });
-    } else if (op.value === "|-") {
-      commands.push({ op: "lineTo", x: current.x, y: next.y }, { op: "lineTo", x: next.x, y: next.y });
-    }
-    current = next;
-  }
-  state.model.paths.push({
+  const path = {
+    tokens,
+    scope: cloneScope(state.scope),
     props: {
-      commands,
+      commands: resolvePathCommands(state, tokens),
       stroke: style.stroke,
       strokeWidth: style.strokeWidth,
       strokeDasharray: style.strokeDasharray,
@@ -283,23 +342,30 @@ function parseDrawCommand(state, body) {
       arrowSize: style.arrowSize
     },
     style: style.extraStyle
-  });
+  };
+  hideInternal(path, ["tokens", "scope"]);
+  state.model.paths.push(path);
 }
 
 function parseFillDrawCommand(state, body) {
   const { options, rest } = splitCommandOptions(body);
-  const style = resolveTikzStyle(state.model.styles, parseOptionList(options), state.model.cmToPx);
+  const style = resolveTikzStyle(state.model.styles, parseOptionList(options), state.model.units);
   const match = rest.match(/^\s*\(([\s\S]+?)\)\s+circle\s+\(([\s\S]+?)\)/);
   if (!match) throw new GraphDslError(`Unsupported TikZ filldraw command: \\filldraw${body};`);
   const point = resolveCoordinate(state, match[1]);
-  state.model.marks.push({
+  const mark = {
     ...point,
-    r: lengthToPx(match[2], state.model.cmToPx),
+    rawAt: match[1],
+    rawR: match[2],
+    scope: cloneScope(state.scope),
+    r: lengthToPx(match[2], state.model.units),
     fill: style.fill === "none" ? style.stroke : style.fill,
     stroke: style.stroke,
     strokeWidth: style.strokeWidth,
     style: style.extraStyle
-  });
+  };
+  hideInternal(mark, ["rawAt", "rawR", "scope"]);
+  state.model.marks.push(mark);
 }
 
 function parsePicCommand(state, body) {
@@ -427,7 +493,7 @@ function findCommandEnd(source, start) {
   return -1;
 }
 
-function resolveTikzStyle(styles, options, cmToPx = DEFAULT_CM_TO_PX) {
+function resolveTikzStyle(styles, options, units = DEFAULT_TIKZ_UNITS) {
   const merged = [];
   for (const option of options) {
     if (styles.has(option.key)) {
@@ -460,12 +526,13 @@ function resolveTikzStyle(styles, options, cmToPx = DEFAULT_CM_TO_PX) {
     else if (key === "<->") {
       style.headArrow = true;
       style.tailArrow = true;
-    } else if (key === "minimum width") style.width = lengthToPx(value, cmToPx);
-    else if (key === "minimum height") style.height = lengthToPx(value, cmToPx);
+    } else if (key === "minimum width") style.width = lengthToPx(value, units);
+    else if (key === "minimum height") style.height = lengthToPx(value, units);
     else if (key === "minimum size") {
-      style.width = lengthToPx(value, cmToPx);
-      style.height = lengthToPx(value, cmToPx);
-    } else if (key === "rounded corners") style.corner = value ? lengthToPx(value, cmToPx) : 6;
+      style.width = lengthToPx(value, units);
+      style.height = lengthToPx(value, units);
+    } else if (key === "inner sep") style.innerSep = lengthToPx(value ?? "3pt", units);
+    else if (key === "rounded corners") style.corner = value ? lengthToPx(value, units) : 6;
     else if (isColorKeyword(key)) style.textStyle.fill = tikzColor(key);
   }
   if (style.shape === "circle" && (style.width || style.height)) {
@@ -484,16 +551,16 @@ function resolveCoordinate(state, raw) {
     const xShift = shifts.find((item) => item.key === "xshift")?.value;
     const yShift = shifts.find((item) => item.key === "yshift")?.value;
     return {
-      x: base.x + lengthToPx(xShift ?? 0, state.model.cmToPx),
-      y: base.y - lengthToPx(yShift ?? 0, state.model.cmToPx)
+      x: base.x + lengthToPx(xShift ?? 0, state.model.units),
+      y: base.y - lengthToPx(yShift ?? 0, state.model.units)
     };
   }
   const pair = source.match(/^([+-]?(?:\d+\.?\d*|\.\d+))\s*,\s*([+-]?(?:\d+\.?\d*|\.\d+))$/);
   if (pair) {
     const origin = state.scope?.origin ?? { x: 0, y: 0 };
     return {
-      x: origin.x + Number(pair[1]) * state.model.cmToPx,
-      y: origin.y - Number(pair[2]) * state.model.cmToPx
+      x: origin.x + Number(pair[1]) * state.model.units.cm,
+      y: origin.y - Number(pair[2]) * state.model.units.cm
     };
   }
   const name = scopedReferenceName(state, source);
@@ -534,6 +601,97 @@ function registerNodeAnchors(state, node) {
   for (const [name, point] of Object.entries(anchors)) {
     state.anchors.set(`${node.id}.${name}`, point);
   }
+}
+
+function resolveNodeLayout(state, node, defaults, measure) {
+  const point = resolveCoordinate(stateWithScope(state, node.scope), node.rawAt ?? `${node.x},${node.y}`);
+  const math = node.label ? parseMath(node.label) : null;
+  const textStyle = {
+    ...(math ? defaults.math : defaults.text),
+    ...(node.textStyle ?? {})
+  };
+  const labelBox = node.label
+    ? (math
+      ? mathLabelBox(math, textStyle, measure, {
+        x: point.x,
+        y: point.y,
+        anchor: "middle",
+        fontSize: textStyle.fontSize
+      })
+      : textLabelBox(node.label, textStyle, measure, {
+        x: point.x,
+        y: point.y,
+        anchor: "middle",
+        fontSize: textStyle.fontSize
+      }))
+    : null;
+  const innerSep = Number(node.innerSep ?? DEFAULT_INNER_SEP);
+  const naturalWidth = labelBox ? labelBox.width + innerSep * 2 : DEFAULT_NODE_WIDTH;
+  const naturalHeight = labelBox ? labelBox.height + innerSep * 2 : DEFAULT_NODE_HEIGHT;
+  const width = Math.max(node.minWidth ?? 0, naturalWidth);
+  const height = Math.max(node.minHeight ?? 0, naturalHeight);
+  const r = node.shape === "circle" ? Math.max(width, height) / 2 : node.r;
+  return {
+    ...node,
+    ...point,
+    width,
+    height,
+    r,
+    labelBox
+  };
+}
+
+function resolvePathLayout(state, path) {
+  return {
+    ...path,
+    props: {
+      ...path.props,
+      commands: resolvePathCommands(stateWithScope(state, path.scope), path.tokens)
+    }
+  };
+}
+
+function resolvePathCommands(state, tokens) {
+  const commands = [];
+  let current = resolveCoordinate(state, tokens[0].value);
+  commands.push({ op: "moveTo", x: current.x, y: current.y });
+  for (let index = 1; index < tokens.length; index += 2) {
+    const op = tokens[index];
+    const coord = tokens[index + 1];
+    if (!op || !coord || op.type !== "op" || coord.type !== "coord") {
+      throw new GraphDslError(`Unsupported TikZ draw path`);
+    }
+    const next = resolveCoordinate(state, coord.value);
+    if (op.value === "--") {
+      commands.push({ op: "lineTo", x: next.x, y: next.y });
+    } else if (op.value === "-|") {
+      commands.push({ op: "lineTo", x: next.x, y: current.y }, { op: "lineTo", x: next.x, y: next.y });
+    } else if (op.value === "|-") {
+      commands.push({ op: "lineTo", x: current.x, y: next.y }, { op: "lineTo", x: next.x, y: next.y });
+    }
+    current = next;
+  }
+  return commands;
+}
+
+function stateWithScope(state, scope) {
+  return { ...state, scope };
+}
+
+function cloneScope(scope) {
+  return scope ? { prefix: scope.prefix, origin: { ...scope.origin } } : null;
+}
+
+function hideInternal(object, keys) {
+  for (const key of keys) {
+    Object.defineProperty(object, key, {
+      value: object[key],
+      enumerable: false,
+      configurable: true,
+      writable: true
+    });
+  }
+  return object;
 }
 
 function pathTokens(source) {
@@ -687,18 +845,46 @@ function includePoint(bounds, x, y) {
   bounds.maxY = Math.max(bounds.maxY, y);
 }
 
-function lengthToPx(value, unit) {
+function normalizeTikzUnits(options = {}, fallbackCm = DEFAULT_CM_TO_PX) {
+  const source = options.units && typeof options.units === "object" ? options.units : {};
+  const cm = positiveNumber(source.cm ?? options.cmToPx ?? options.unit, fallbackCm);
+  const pt = positiveNumber(source.pt, DEFAULT_TIKZ_UNITS.pt);
+  return {
+    cm,
+    mm: positiveNumber(source.mm, cm / 10),
+    pt,
+    px: positiveNumber(source.px, 1)
+  };
+}
+
+function lengthToPx(value, units = DEFAULT_TIKZ_UNITS) {
   if (value == null || value === true || value === "") return 0;
-  if (typeof value === "number") return value * unit;
+  const scale = normalizeLengthUnits(units);
+  if (typeof value === "number") return value * scale.cm;
   const text = String(value).trim();
   const match = text.match(/^([+-]?(?:\d+\.?\d*|\.\d+))\s*(cm|mm|pt|px)?$/);
   if (!match) return Number(text) || 0;
   const number = Number(match[1]);
   const suffix = match[2] ?? "cm";
-  if (suffix === "px") return number;
-  if (suffix === "pt") return number * 1.3333333333;
-  if (suffix === "mm") return number * unit / 10;
-  return number * unit;
+  return number * scale[suffix];
+}
+
+function normalizeLengthUnits(units) {
+  if (typeof units === "number") {
+    return { cm: units, mm: units / 10, pt: DEFAULT_TIKZ_UNITS.pt, px: 1 };
+  }
+  const cm = positiveNumber(units?.cm, DEFAULT_TIKZ_UNITS.cm);
+  return {
+    cm,
+    mm: positiveNumber(units?.mm, cm / 10),
+    pt: positiveNumber(units?.pt, DEFAULT_TIKZ_UNITS.pt),
+    px: positiveNumber(units?.px, 1)
+  };
+}
+
+function positiveNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : fallback;
 }
 
 function tikzColor(value) {
