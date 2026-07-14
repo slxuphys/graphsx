@@ -264,6 +264,41 @@ test("uses measured TikZ node boxes for anchors and paths", () => {
   assert.deepEqual(commands[1], { op: "lineTo", x: 160, y: 0 });
 });
 
+test("trims bare TikZ node path endpoints to node borders", () => {
+  const model = parseTikz(`
+    \\node[rectangle, draw=black, minimum width=2cm, minimum height=1cm] (A) at (0,0) {A};
+    \\node[rectangle, draw=black, minimum width=2cm, minimum height=1cm] (B) at (3,2) {B};
+    \\draw (A) |- (B);
+    \\draw (A) -| (B);
+    \\draw (A) -- (B);
+    \\draw (A.center) -- (B.center);
+  `, {
+    units: {
+      cm: 40
+    }
+  });
+  const resolved = resolveTikzLayout(model);
+
+  assert.deepEqual(resolved.paths[0].props.commands, [
+    { op: "moveTo", x: 0, y: -20 },
+    { op: "lineTo", x: 0, y: -80 },
+    { op: "lineTo", x: 80, y: -80 }
+  ]);
+  assert.deepEqual(resolved.paths[1].props.commands, [
+    { op: "moveTo", x: 40, y: 0 },
+    { op: "lineTo", x: 120, y: 0 },
+    { op: "lineTo", x: 120, y: -60 }
+  ]);
+  assert.deepEqual(resolved.paths[2].props.commands.map(roundPointCommand), [
+    { op: "moveTo", x: 30, y: -20 },
+    { op: "lineTo", x: 90, y: -60 }
+  ]);
+  assert.deepEqual(resolved.paths[3].props.commands, [
+    { op: "moveTo", x: 0, y: 0 },
+    { op: "lineTo", x: 120, y: -80 }
+  ]);
+});
+
 test("parses TikZ inner sep for measured node anchors", () => {
   const model = parseTikz(`
     \\node[inner sep=10pt] (T) at (0,0) {$A$};
@@ -326,4 +361,12 @@ function fakeElement(name, ownerDocument = null, calls = []) {
     textContent: ""
   };
   return element;
+}
+
+function roundPointCommand(command) {
+  return {
+    op: command.op,
+    x: Math.round(command.x * 1000) / 1000,
+    y: Math.round(command.y * 1000) / 1000
+  };
 }

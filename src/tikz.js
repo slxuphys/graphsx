@@ -209,7 +209,8 @@ export function resolveTikzLayout(model, options = {}) {
   };
   const state = {
     model,
-    anchors: new Map()
+    anchors: new Map(),
+    nodeBoxes: new Map()
   };
   const elements = model.elements?.length
     ? model.elements
@@ -612,6 +613,7 @@ function registerNodeAnchors(state, node) {
     "south west": { x: left, y: bottom }
   };
   state.anchors.set(node.id, anchors.center);
+  state.nodeBoxes?.set(node.id, node);
   for (const [name, point] of Object.entries(anchors)) {
     state.anchors.set(`${node.id}.${name}`, point);
   }
@@ -667,25 +669,84 @@ function resolvePathLayout(state, path) {
 
 function resolvePathCommands(state, tokens) {
   const commands = [];
-  let current = resolveCoordinate(state, tokens[0].value);
-  commands.push({ op: "moveTo", x: current.x, y: current.y });
+  let current = resolveCoordinateReference(state, tokens[0].value);
+  commands.push({ op: "moveTo", x: current.point.x, y: current.point.y });
   for (let index = 1; index < tokens.length; index += 2) {
     const op = tokens[index];
     const coord = tokens[index + 1];
     if (!op || !coord || op.type !== "op" || coord.type !== "coord") {
       throw new GraphDslError(`Unsupported TikZ draw path`);
     }
-    const next = resolveCoordinate(state, coord.value);
+    const next = resolveCoordinateReference(state, coord.value);
     if (op.value === "--") {
-      commands.push({ op: "lineTo", x: next.x, y: next.y });
+      const start = pathEndpoint(current, next.point);
+      const end = pathEndpoint(next, current.point);
+      updateLastMoveTo(commands, start);
+      commands.push({ op: "lineTo", x: end.x, y: end.y });
     } else if (op.value === "-|") {
-      commands.push({ op: "lineTo", x: next.x, y: current.y }, { op: "lineTo", x: next.x, y: next.y });
+      const corner = { x: next.point.x, y: current.point.y };
+      const start = pathEndpoint(current, corner);
+      const end = pathEndpoint(next, corner);
+      updateLastMoveTo(commands, start);
+      commands.push({ op: "lineTo", x: corner.x, y: corner.y }, { op: "lineTo", x: end.x, y: end.y });
     } else if (op.value === "|-") {
-      commands.push({ op: "lineTo", x: current.x, y: next.y }, { op: "lineTo", x: next.x, y: next.y });
+      const corner = { x: current.point.x, y: next.point.y };
+      const start = pathEndpoint(current, corner);
+      const end = pathEndpoint(next, corner);
+      updateLastMoveTo(commands, start);
+      commands.push({ op: "lineTo", x: corner.x, y: corner.y }, { op: "lineTo", x: end.x, y: end.y });
     }
     current = next;
   }
   return commands;
+}
+
+function resolveCoordinateReference(state, raw) {
+  const source = raw.trim();
+  const point = resolveCoordinate(state, source);
+  const name = source.match(/^\s*\[([\s\S]*?)\]\s*([\s\S]+)$/)
+    ? null
+    : scopedReferenceName(state, source);
+  const node = name && !name.includes(".") ? state.nodeBoxes?.get(name) : null;
+  return {
+    point,
+    node: node ?? null
+  };
+}
+
+function pathEndpoint(ref, toward) {
+  return ref.node ? nodeBorderPoint(ref.node, toward) : ref.point;
+}
+
+function nodeBorderPoint(node, toward) {
+  const dx = toward.x - node.x;
+  const dy = toward.y - node.y;
+  if (Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9) return { x: node.x, y: node.y };
+  if (node.shape === "circle") {
+    const r = node.r ?? Math.max(node.width ?? 0, node.height ?? 0) / 2;
+    const length = Math.hypot(dx, dy) || 1;
+    return {
+      x: node.x + dx * r / length,
+      y: node.y + dy * r / length
+    };
+  }
+  const halfWidth = (node.width ?? DEFAULT_NODE_WIDTH) / 2;
+  const halfHeight = (node.height ?? DEFAULT_NODE_HEIGHT) / 2;
+  const scaleX = Math.abs(dx) > 1e-9 ? halfWidth / Math.abs(dx) : Number.POSITIVE_INFINITY;
+  const scaleY = Math.abs(dy) > 1e-9 ? halfHeight / Math.abs(dy) : Number.POSITIVE_INFINITY;
+  const scale = Math.min(scaleX, scaleY);
+  return {
+    x: node.x + dx * scale,
+    y: node.y + dy * scale
+  };
+}
+
+function updateLastMoveTo(commands, point) {
+  const last = commands[commands.length - 1];
+  if (last?.op === "moveTo") {
+    last.x = point.x;
+    last.y = point.y;
+  }
 }
 
 function stateWithScope(state, scope) {
