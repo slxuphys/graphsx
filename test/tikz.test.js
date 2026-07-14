@@ -129,7 +129,7 @@ test("supports nested coordinates inside reusable TikZ pics", () => {
   ]);
 });
 
-test("applies cmToPx to TikZ coordinates, shifts, and style lengths", () => {
+test("applies TikZ unit scales to coordinates, shifts, and style lengths", () => {
   const model = parseTikz(`
     \\begin{tikzpicture}[
       process/.style={rectangle, draw=black, fill=white, thick, rounded corners=.08cm, minimum width=1.2cm, minimum height=.6cm}
@@ -137,9 +137,9 @@ test("applies cmToPx to TikZ coordinates, shifts, and style lengths", () => {
       \\node[process] (A) at (1,1) {A};
       \\coordinate (B) at ([xshift=.5cm,yshift=.25cm]A.east);
     \\end{tikzpicture}
-  `, { cmToPx: 40 });
+  `, { units: { cm: 40 } });
 
-  assert.equal(model.cmToPx, 40);
+  assert.equal(model.units.cm, 40);
   assert.equal(model.nodes[0].x, 40);
   assert.equal(model.nodes[0].y, -40);
   assert.equal(model.nodes[0].width, 48);
@@ -172,14 +172,6 @@ test("maps TikZ line thickness keywords", () => {
   ]);
 });
 
-test("keeps unit as a backwards-compatible TikZ cm scale alias", () => {
-  const model = parseTikz(`\\node[rectangle, draw=black, minimum width=1cm] (A) at (2,0) {A};`, { unit: 50 });
-
-  assert.equal(model.cmToPx, 50);
-  assert.equal(model.nodes[0].x, 100);
-  assert.equal(model.nodes[0].width, 50);
-});
-
 test("supports TikZ unit scales for cm and pt", () => {
   const model = parseTikz(`
     \\node[rectangle, draw=black, minimum width=1cm, inner sep=3pt] (A) at (2,0) {A};
@@ -198,7 +190,6 @@ test("supports TikZ unit scales for cm and pt", () => {
     }
   });
 
-  assert.equal(model.cmToPx, 50);
   assert.deepEqual(model.units, { cm: 50, mm: 5, pt: 2, px: 1 });
   assert.equal(resolved.nodes[0].width, 50);
   assert.equal(resolved.nodes[0].innerSep, 6);

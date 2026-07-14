@@ -26,11 +26,9 @@ export function parseTikz(source, options = {}) {
   const clean = stripComments(source);
   const definitions = parseTikzDefinitions(clean);
   const body = stripTikzSetBlocks(tikzBody(clean));
-  const cmToPx = Number(options.cmToPx ?? options.unit ?? DEFAULT_CM_TO_PX);
-  const units = normalizeTikzUnits(options, cmToPx);
+  const units = normalizeTikzUnits(options);
   const model = {
     type: "tikz",
-    cmToPx: units.cm,
     units,
     styles: definitions.styles,
     pics: definitions.pics,
@@ -845,9 +843,9 @@ function includePoint(bounds, x, y) {
   bounds.maxY = Math.max(bounds.maxY, y);
 }
 
-function normalizeTikzUnits(options = {}, fallbackCm = DEFAULT_CM_TO_PX) {
+function normalizeTikzUnits(options = {}) {
   const source = options.units && typeof options.units === "object" ? options.units : {};
-  const cm = positiveNumber(source.cm ?? options.cmToPx ?? options.unit, fallbackCm);
+  const cm = positiveNumber(source.cm, DEFAULT_TIKZ_UNITS.cm);
   const pt = positiveNumber(source.pt, DEFAULT_TIKZ_UNITS.pt);
   return {
     cm,
